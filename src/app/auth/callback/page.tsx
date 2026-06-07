@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { motion } from 'framer-motion';
-import { saveUserProfile, getUserProfile } from '@/lib/supabase-service';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -28,20 +27,28 @@ export default function AuthCallback() {
 
         if (session) {
           const user = session.user;
-          console.log('Google OAuth success:', user.email);
+          console.log('Google OAuth success:', user);
           
           // Get user metadata from Google
           const googleName = user.user_metadata?.full_name || user.user_metadata?.name || '';
           const email = user.email || '';
           
-          // Check if profile exists in database
-          const existingProfile = await getUserProfile(user.id);
-          
+          // Check if profile exists in our profiles table
+          const { data: existingProfile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', email)
+            .single();
+
+          console.log('Existing profile:', existingProfile);
+
           if (existingProfile && existingProfile.name) {
             // Profile exists with name, go to dashboard
+            console.log('Profile found, going to dashboard');
             router.push('/dashboard');
           } else {
             // New user or no name set - show welcome prompt
+            console.log('No profile or no name, showing prompt');
             setUserId(user.id);
             setUserEmail(email);
             setUserName(googleName);
@@ -67,15 +74,46 @@ export default function AuthCallback() {
     try {
       setLoading(true);
       
-      // Save profile to database
-      await saveUserProfile({
-        id: userId,
-        name: userName.trim(),
-        email: userEmail,
-        theme: 'light',
-        createdAt: new Date().toISOString(),
-        isLoggedIn: true,
-      });
+      // Check if profile exists by email
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', userEmail)
+        .single();
+
+      if (existingProfile) {
+        // Update existing profile
+        const { error } = await supabase
+          .from('profiles')
+          .update({ 
+            name: userName.trim(),
+            is_logged_in: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('email', userEmail);
+
+        if (error) {
+          console.error('Error updating profile:', error);
+          throw error;
+        }
+      } else {
+        // Insert new profile
+        const { error } = await supabase
+          .from('profiles')
+          .insert({
+            name: userName.trim(),
+            email: userEmail,
+            theme: 'light',
+            is_logged_in: true,
+          });
+
+        if (error) {
+          console.error('Error creating profile:', error);
+          throw error;
+        }
+      }
+      
+      console.log('Profile saved successfully');
       
       // Redirect to dashboard
       router.push('/dashboard');
