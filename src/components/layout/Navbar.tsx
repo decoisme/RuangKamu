@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
-import { Menu, X, Lock, User, LayoutDashboard, SmilePlus, BookOpen, BarChart3, Brain } from "lucide-react";
+import { Menu, X, Lock, User, LayoutDashboard, SmilePlus, BookOpen, BarChart3, Brain, LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { logout } from "@/lib/auth";
 
 interface NavbarProps { showNav?: boolean; }
 
@@ -34,6 +35,12 @@ export function Navbar({ showNav = true }: NavbarProps) {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await logout();
+    router.push('/auth');
+  };
 
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 10);
@@ -107,6 +114,13 @@ export function Navbar({ showNav = true }: NavbarProps) {
               }`}>
               <User size={15} />
             </Link>
+            <button 
+              onClick={handleLogout}
+              className="hidden md:flex items-center justify-center w-8 h-8 rounded-full text-red-500/60 hover:text-red-500 hover:bg-red-50 transition-all duration-200"
+              title="Logout"
+            >
+              <LogOut size={15} />
+            </button>
             <button onClick={() => setOpen(true)}
               className="md:hidden flex items-center justify-center w-8 h-8 rounded-full text-[#0a0a0a]/50 hover:text-[#0a0a0a] hover:bg-black/5 transition-all">
               <Menu size={18} />
@@ -148,8 +162,14 @@ export function Navbar({ showNav = true }: NavbarProps) {
                   );
                 })}
               </div>
-              <div className="px-5 py-4 border-t border-black/[0.06]">
-                <p className="text-[11px] text-[#0a0a0a]/20 text-center">Ruang Kamu</p>
+              <div className="px-3 py-3 border-t border-black/[0.06]">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium text-red-500 hover:bg-red-50 transition-all"
+                >
+                  <LogOut size={16} />
+                  Logout
+                </button>
               </div>
             </motion.div>
           </>

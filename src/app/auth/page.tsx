@@ -13,33 +13,9 @@ import {
   EyeOff,
   ArrowRight,
   ChevronLeft,
+  AlertCircle,
 } from 'lucide-react';
-
-// ===== INLINE STORE HELPERS =====
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-function saveUser(user: {
-  id: string;
-  name: string;
-  email: string;
-  theme: 'dark' | 'light';
-  createdAt: string;
-  isLoggedIn: boolean;
-}) {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('ruangkamu_user', JSON.stringify(user));
-  }
-}
-
-function getUser() {
-  if (typeof window !== 'undefined') {
-    const data = localStorage.getItem('ruangkamu_user');
-    if (data) return JSON.parse(data);
-  }
-  return null;
-}
+import { loginWithEmail, registerWithEmail } from '@/lib/auth';
 
 // ===== FLOATING PARTICLES =====
 function FloatingParticles() {
@@ -124,46 +100,36 @@ export default function AuthPage() {
   const handleLogin = async () => {
     if (!validateLogin()) return;
     setLoginLoading(true);
+    setLoginErrors({});
 
-    // Simulate async login
-    await new Promise((r) => setTimeout(r, 800));
-
-    // Check existing user or create one
-    const existingUser = getUser();
-    if (existingUser && existingUser.email === loginEmail) {
-      existingUser.isLoggedIn = true;
-      saveUser(existingUser);
-    } else {
-      saveUser({
-        id: generateId(),
-        name: loginEmail.split('@')[0],
-        email: loginEmail,
-        theme: 'dark',
-        createdAt: new Date().toISOString(),
-        isLoggedIn: true,
+    try {
+      await loginWithEmail(loginEmail, loginPassword);
+      router.push('/dashboard');
+    } catch (error: any) {
+      setLoginErrors({ 
+        general: error?.message || 'Login failed. Please check your credentials.' 
       });
+    } finally {
+      setLoginLoading(false);
     }
-    setLoginLoading(false);
-    router.push('/dashboard');
   };
 
   // Handle register
   const handleRegister = async () => {
     if (!validateRegister()) return;
     setRegLoading(true);
+    setRegErrors({});
 
-    await new Promise((r) => setTimeout(r, 800));
-
-    saveUser({
-      id: generateId(),
-      name: regName,
-      email: regEmail,
-      theme: 'dark',
-      createdAt: new Date().toISOString(),
-      isLoggedIn: true,
-    });
-    setRegLoading(false);
-    router.push('/dashboard');
+    try {
+      await registerWithEmail(regEmail, regPassword, regName);
+      router.push('/dashboard');
+    } catch (error: any) {
+      setRegErrors({ 
+        general: error?.message || 'Registration failed. Please try again.' 
+      });
+    } finally {
+      setRegLoading(false);
+    }
   };
 
   const tabVariants = {
@@ -246,6 +212,18 @@ export default function AuthPage() {
               >
                 <h2 className="text-2xl font-bold text-[#0a0a0a] mb-1">Welcome back</h2>
                 <p className="text-sm text-[#9a9a9a] mb-7">Continue your self-reflection journey</p>
+
+                {/* General Error */}
+                {loginErrors.general && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2"
+                  >
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-600">{loginErrors.general}</p>
+                  </motion.div>
+                )}
 
                 {/* Email */}
                 <div className="mb-4">
@@ -341,6 +319,18 @@ export default function AuthPage() {
               >
                 <h2 className="text-2xl font-bold text-[#0a0a0a] mb-1">Create your space</h2>
                 <p className="text-sm text-[#9a9a9a] mb-7">Begin your journey of self-understanding</p>
+
+                {/* General Error */}
+                {regErrors.general && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2"
+                  >
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-600">{regErrors.general}</p>
+                  </motion.div>
+                )}
 
                 {/* Name */}
                 <div className="mb-4">

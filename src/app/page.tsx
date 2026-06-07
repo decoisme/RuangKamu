@@ -206,11 +206,11 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href="/checkin"
+            <Link href="/auth"
               className="inline-flex items-center gap-2 px-7 py-3.5 text-[15px] font-semibold rounded-full bg-[#0a0a0a] text-white hover:bg-[#1a1a1a] transition-all hover:-translate-y-0.5 hover:shadow-lg">
               Start Check-in <ArrowRight size={16} />
             </Link>
-            <Link href="/dashboard"
+            <Link href="/auth"
               className="inline-flex items-center gap-2 px-7 py-3.5 text-[15px] font-medium rounded-full border-[1.5px] border-black/20 text-[#0a0a0a] hover:bg-black/5 hover:border-black/30 transition-all">
               Explore Dashboard <ChevronRight size={16} />
             </Link>
@@ -387,7 +387,7 @@ export default function LandingPage() {
             <p className="text-[16px] text-white/40 mb-8 max-w-sm mx-auto">
               Start understanding yourself one check-in at a time.
             </p>
-            <Link href="/checkin"
+            <Link href="/auth"
               className="inline-flex items-center gap-2 px-8 py-3.5 text-[15px] rounded-full bg-white text-[#0a0a0a] font-semibold hover:bg-white/90 transition-all hover:-translate-y-0.5 hover:shadow-lg">
               Start for free <ArrowRight size={16} />
             </Link>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Outfit, Poppins } from "next/font/google";
 import "./globals.css";
+import { AuthGuard } from "@/components/AuthGuard";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit", display: "swap" });
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             style={{ background: "radial-gradient(ellipse 60% 50% at 100% 100%, rgba(0,0,0,0.02) 0%, transparent 70%)" }} />
         </div>
         <main className="relative z-10 min-h-screen">
-          {children}
+          <AuthGuard>
+            {children}
+          </AuthGuard>
         </main>
       </body>
     </html>
