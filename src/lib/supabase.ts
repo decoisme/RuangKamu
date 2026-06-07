@@ -7,8 +7,14 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
  * Supabase client instance.
  * Uses NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
  * environment variables for configuration.
+ * 
+ * For build-time, uses placeholder values to prevent errors.
+ * The isSupabaseConfigured() check will return false, triggering localStorage fallback.
  */
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-anon-key-for-build-time'
+);
 
 /**
  * Checks whether real Supabase credentials are configured.
