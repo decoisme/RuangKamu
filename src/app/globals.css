@@ -223,3 +223,128 @@ input:focus, textarea:focus, select:focus {
 .breathing-ring   { animation: breathe 8s ease-in-out infinite; }
 .breathing-ring-2 { animation: breathe 8s ease-in-out 0.5s infinite; }
 .breathing-ring-3 { animation: breathe 8s ease-in-out 1s infinite; }
+
+/* ── Dark Mode ─────────────────────────────────────────────────────────── */
+
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #0a0a0a;
+  color: #e5e5e5;
+}
+
+/* Dark mode glass */
+.dark .glass {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.10);
+}
+
+.dark .glass-strong {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.12);
+}
+
+.dark .glass-card {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.08);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
+}
+
+/* Dark mode cards */
+.dark .apple-card {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.dark .apple-card:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+/* Dark mode buttons */
+.dark .btn-primary {
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+.dark .btn-primary:hover {
+  background: #f0f0f0;
+}
+
+.dark .btn-secondary {
+  color: #e5e5e5;
+  border-color: rgba(255,255,255,0.20);
+}
+
+.dark .btn-secondary:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.30);
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #404040;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #505050;
+}
+
+/* Dark mode selection */
+.dark ::selection {
+  background: rgba(255,255,255,0.15);
+  color: #ffffff;
+}
+
+/* Dark mode divider */
+.dark .divider {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+}
+
+/* Dark mode Recharts */
+.dark .recharts-cartesian-grid-horizontal line,
+.dark .recharts-cartesian-grid-vertical line {
+  stroke: rgba(255,255,255,0.08);
+}
+
+.dark .recharts-text {
+  fill: #707070 !important;
+}
+
+.dark .recharts-default-tooltip {
+  background: #1a1a1a !important;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+
+/* Dark mode focus */
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.12);
+}
+
+/* Dark mode mood selected */
+.dark .mood-selected {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.30) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 4px 20px rgba(0,0,0,0.3);
+}
+
+/* Smooth theme transitions */
+body,
+.glass,
+.glass-strong,
+.glass-card,
+.apple-card,
+.btn-primary,
+.btn-secondary {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}

@@ -46,8 +46,8 @@ export function StatsCard({ icon, label, value, trend }: StatsCardProps) {
     >
       <div className="flex items-start justify-between gap-3">
         {/* Icon + Label + Value */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2.5 mb-3">
+        <div className="flex-1 min-w-0 space-y-4">
+          <div className="flex items-center gap-2.5">
             {/* Icon container */}
             <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-black/5 border border-black/8 flex items-center justify-center text-[#555555] group-hover:bg-black/8 transition-colors">
               {icon}

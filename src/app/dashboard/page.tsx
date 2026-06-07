@@ -25,7 +25,15 @@ import {
   Sun,
   Moon as MoonIcon,
   CloudSun,
+  Wind,
 } from 'lucide-react';
+import { GentleReminders } from '@/components/ui/GentleReminders';
+import { FloatingHearts } from '@/components/ui/FloatingEmoji';
+import { EncouragementBadge } from '@/components/ui/EncouragementBadge';
+import { GratitudePrompt } from '@/components/ui/GratitudePrompt';
+import { MoodCalendar } from '@/components/ui/MoodCalendar';
+import { BreathingExercise } from '@/components/ui/BreathingExercise';
+import { MoodInsights } from '@/components/ui/MoodInsights';
 import {
   BarChart,
   Bar,
@@ -38,11 +46,11 @@ import {
 import type { MoodEntry, MoodType, UserProfile } from '@/lib/types';
 import { MOOD_LIST, MOOD_COLORS } from '@/lib/types';
 
-// ===== INLINE STORE HELPERS =====
-function getMoodEntries(): MoodEntry[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem('ruangkamu_moods');
-  return data ? JSON.parse(data) : [];
+// ===== SUPABASE INTEGRATION =====
+import { getMoodEntries as getMoodEntriesService } from '@/lib/supabase-service';
+
+async function getMoodEntries(): Promise<MoodEntry[]> {
+  return await getMoodEntriesService();
 }
 
 function getUser(): UserProfile | null {
@@ -180,33 +188,41 @@ function QuickAction({
   label,
   gradient,
   delay,
+  onClick,
 }: {
   href: string;
   icon: typeof SmilePlus;
   label: string;
   gradient: string;
   delay: number;
+  onClick?: (e: React.MouseEvent) => void;
 }) {
+  const content = (
+    <motion.div
+      whileHover={{ y: -4, scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className="glass-card rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer group min-h-[120px]"
+    >
+      <div
+        className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} border border-black/8 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0`}
+      >
+        <Icon className="w-5 h-5 text-[#555555]" />
+      </div>
+      <span className="text-sm font-medium text-[#0a0a0a] text-center">{label}</span>
+    </motion.div>
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
     >
-      <Link href={href}>
-        <motion.div
-          whileHover={{ y: -4, scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="glass-card rounded-2xl p-5 flex flex-col items-center gap-3 cursor-pointer group"
-        >
-          <div
-            className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center group-hover:scale-110 transition-transform`}
-          >
-            <Icon className="w-6 h-6 text-white/90" />
-          </div>
-          <span className="text-sm font-medium text-[#E2E8F0]">{label}</span>
-        </motion.div>
-      </Link>
+      {onClick ? (
+        <div onClick={onClick}>{content}</div>
+      ) : (
+        <Link href={href}>{content}</Link>
+      )}
     </motion.div>
   );
 }
@@ -230,7 +246,7 @@ function InsightCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="glass-card rounded-2xl p-5 flex gap-4"
+      className="glass-card rounded-2xl p-5 flex gap-4 items-start"
     >
       <div
         className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -238,9 +254,9 @@ function InsightCard({
       >
         <Icon className="w-5 h-5" style={{ color }} />
       </div>
-      <div>
-        <h4 className="text-sm font-semibold text-[#E2E8F0] mb-1">{title}</h4>
-        <p className="text-xs text-[#94A3B8] leading-relaxed">{description}</p>
+      <div className="flex-1 min-w-0">
+        <h4 className="text-sm font-semibold text-[#0a0a0a] mb-1.5">{title}</h4>
+        <p className="text-xs text-[#9a9a9a] leading-relaxed">{description}</p>
       </div>
     </motion.div>
   );
@@ -260,19 +276,54 @@ function EmptyState() {
         transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         className="mb-6"
       >
-        <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-[#8B7EC8]/20 to-[#6B9BD2]/20 flex items-center justify-center">
-          <span className="text-5xl">🌱</span>
+        <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-[#8B7EC8]/20 to-[#6B9BD2]/20 flex items-center justify-center relative overflow-hidden">
+          <motion.span 
+            animate={{ 
+              scale: [1, 1.2, 1],
+              rotate: [0, 5, -5, 0]
+            }}
+            transition={{ 
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+            className="text-5xl relative z-10"
+          >
+            🌱
+          </motion.span>
+          
+          {/* Pulse effect */}
+          <motion.div
+            animate={{ 
+              scale: [1, 1.4, 1],
+              opacity: [0.3, 0, 0.3]
+            }}
+            transition={{ 
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+            className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#8B7EC8]/30 to-[#6B9BD2]/30"
+          />
         </div>
       </motion.div>
-      <h3 className="text-xl font-semibold text-[#E2E8F0] mb-2">Your story begins here</h3>
-      <p className="text-[#94A3B8] max-w-sm mb-8 leading-relaxed">
-        Start your first check-in and begin understanding your emotional patterns, one day at a time.
+      <h3 className="text-xl font-semibold text-[#0a0a0a] mb-2 flex items-center gap-2">
+        Your story begins here{' '}
+        <motion.span
+          animate={{ rotate: [0, 20, -20, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          ✨
+        </motion.span>
+      </h3>
+      <p className="text-[#555555] max-w-sm mb-8 leading-relaxed">
+        Start your first check-in and begin understanding your emotional patterns, one day at a time :)
       </p>
       <Link href="/checkin">
         <motion.button
           whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.98 }}
-          className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-[#8B7EC8] to-[#6B9BD2] text-white font-semibold flex items-center gap-2 shadow-lg shadow-[#8B7EC8]/25 cursor-pointer"
+          className="px-8 py-3.5 rounded-2xl bg-[#0a0a0a] text-white font-semibold flex items-center gap-2 shadow-lg shadow-black/15 cursor-pointer"
         >
           Start Your First Check-in
           <ArrowRight className="w-4 h-4" />
@@ -287,11 +338,38 @@ export default function DashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [entries, setEntries] = useState<MoodEntry[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showBadge, setShowBadge] = useState(false);
+  const [badgeType, setBadgeType] = useState<string>('');
+  const [showHearts, setShowHearts] = useState(false);
+  const [showBreathing, setShowBreathing] = useState(false);
 
   useEffect(() => {
-    setUser(getUser());
-    setEntries(getMoodEntries());
-    setIsLoaded(true);
+    const loadData = async () => {
+      setUser(getUser());
+      const moodEntries = await getMoodEntries();
+      setEntries(moodEntries);
+      setIsLoaded(true);
+
+      // Check for milestones
+      if (moodEntries.length === 1) {
+        setBadgeType('first-checkin');
+        setShowBadge(true);
+        setTimeout(() => setShowBadge(false), 5000);
+      } else if (moodEntries.length === 3) {
+        setBadgeType('3-day-streak');
+        setShowBadge(true);
+        setTimeout(() => setShowBadge(false), 5000);
+      } else if (moodEntries.length === 7) {
+        setBadgeType('7-day-streak');
+        setShowBadge(true);
+        setShowHearts(true);
+        setTimeout(() => {
+          setShowBadge(false);
+          setShowHearts(false);
+        }, 5000);
+      }
+    };
+    loadData();
   }, []);
 
   const greeting = getGreeting();
@@ -410,6 +488,9 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-white pt-14">
       <Navbar />
+      <GentleReminders />
+      <EncouragementBadge badgeId={badgeType} show={showBadge} onClose={() => setShowBadge(false)} />
+      {showHearts && <FloatingHearts count={8} />}
 
       <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
         {/* Header */}
@@ -425,8 +506,23 @@ export default function DashboardPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0a0a0a]">
             {greeting.text},{' '}
-            <span className="gradient-text">{user?.name || 'Friend'}</span>
+            <span className="gradient-text">{user?.name || 'Friend'}</span>{' '}
+            <motion.span
+              animate={{ rotate: [0, 14, -8, 14, 0] }}
+              transition={{ duration: 0.6, delay: 0.3 }}
+              className="inline-block"
+            >
+              :)
+            </motion.span>
           </h1>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="text-sm text-[#555555] mt-1 italic"
+          >
+            We&apos;re glad you&apos;re here {'<3'}
+          </motion.p>
         </motion.div>
 
         {!hasData ? (
@@ -452,10 +548,38 @@ export default function DashboardPage() {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.3 }}
-                      className="w-20 h-20 rounded-2xl flex items-center justify-center"
+                      className="w-20 h-20 rounded-2xl flex items-center justify-center relative"
                       style={{ background: `${todayMood.color}15`, border: `1px solid ${todayMood.color}30` }}
                     >
-                      <span className="text-4xl">{todayMood.emoji}</span>
+                      <motion.span
+                        animate={{ 
+                          rotate: [0, 10, -10, 10, 0],
+                          scale: [1, 1.1, 1]
+                        }}
+                        transition={{ 
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                        className="text-4xl relative z-10"
+                      >
+                        {todayMood.emoji}
+                      </motion.span>
+                      
+                      {/* Gentle pulse */}
+                      <motion.div
+                        animate={{ 
+                          scale: [1, 1.2, 1],
+                          opacity: [0.3, 0.5, 0.3]
+                        }}
+                        transition={{ 
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                        className="absolute inset-0 rounded-2xl"
+                        style={{ background: `${todayMood.color}10` }}
+                      />
                     </motion.div>
                     <div>
                       <p className="text-lg font-semibold text-[#0a0a0a]">{todayMood.label}</p>
@@ -471,13 +595,14 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center py-4">
+                    <div className="w-16 h-16 rounded-2xl bg-black/5 border border-black/8 flex items-center justify-center mb-4">
+                      <SmilePlus className="w-8 h-8 text-[#555555]" />
+                    </div>
                     <p className="text-[#9a9a9a] mb-4 text-sm">You haven&apos;t checked in today</p>
                     <Link href="/checkin">
                       <motion.button
                         whileHover={{ scale: 1.04 }}
                         whileTap={{ scale: 0.98 }}
-                        animate={{ boxShadow: ['0 0 0 0 rgba(0,0,0,0.12)', '0 0 0 12px rgba(0,0,0,0)', '0 0 0 0 rgba(0,0,0,0.12)'] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                         className="px-6 py-2.5 rounded-full bg-[#0a0a0a] text-white text-sm font-semibold flex items-center gap-2 cursor-pointer"
                       >
                         Check In Now
@@ -559,14 +684,44 @@ export default function DashboardPage() {
                   delay={0.5}
                 />
                 <QuickAction
-                  href="/reflection"
-                  icon={Brain}
-                  label="Reflection"
+                  href="#"
+                  icon={Wind}
+                  label="Breathe"
                   gradient="from-black/4 to-black/2"
                   delay={0.6}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowBreathing(true);
+                  }}
                 />
               </div>
             </div>
+
+            {/* Mood Insights & Suggestions */}
+            <div>
+              <h3 className="text-sm font-medium text-[#9a9a9a] mb-3">Your Insights</h3>
+              <MoodInsights 
+                entries={entries}
+                todayScore={todayEntry?.score}
+              />
+            </div>
+
+            {/* Gratitude Practice */}
+            <div>
+              <h3 className="text-sm font-medium text-[#9a9a9a] mb-3">Daily Practice</h3>
+              <GratitudePrompt />
+            </div>
+
+            {/* Mood Calendar */}
+            {entries.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-[#9a9a9a] mb-3">This Month</h3>
+                <MoodCalendar 
+                  entries={entries}
+                  onDateClick={(date) => console.log('Selected date:', date)}
+                />
+              </div>
+            )}
 
             {/* Recent Insights */}
             {insights.length > 0 && (
@@ -589,6 +744,29 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Breathing Exercise Modal */}
+      <AnimatePresence>
+        {showBreathing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            onClick={() => setShowBreathing(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md"
+            >
+              <BreathingExercise />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

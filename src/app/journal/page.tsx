@@ -7,45 +7,40 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Save, Sparkles, Trash2, Search, ChevronDown, ChevronUp,
   Menu, X, LayoutDashboard, SmilePlus, BarChart3, Brain, Lock, User,
-  Loader2, Shield, FileText, Calendar, MessageSquare
+  Loader2, Shield, FileText, Calendar, MessageSquare, Check
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import {
   JOURNAL_PROMPTS, MOOD_LIST, MOOD_COLORS,
   type JournalEntry, type MoodEntry, type MoodType
 } from '@/lib/types';
+import { FloatingEmoji } from '@/components/ui/FloatingEmoji';
+import { RandomEncouragement } from '@/components/ui/EncouragementBadge';
+import { MoodInsights } from '@/components/ui/MoodInsights';
+import { DrawingCanvas } from '@/components/ui/DrawingCanvas';
 
-// ==================== INLINE STORE HELPERS ====================
-const STORAGE_KEYS = {
-  JOURNAL: 'ruangkamu_journal',
-  MOOD: 'ruangkamu_mood',
-};
+// ==================== SUPABASE INTEGRATION ====================
+import {
+  getJournalEntries as getJournalEntriesService,
+  saveJournalEntry as saveJournalEntryService,
+  deleteJournalEntry as deleteJournalEntryService,
+  getMoodEntries as getMoodEntriesService,
+} from '@/lib/supabase-service';
 
-function getJournalEntries(): JournalEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.JOURNAL);
-    return data ? JSON.parse(data) : [];
-  } catch { return []; }
+async function getJournalEntries(): Promise<JournalEntry[]> {
+  return await getJournalEntriesService();
 }
 
-function saveJournalEntry(entry: JournalEntry): void {
-  const entries = getJournalEntries();
-  entries.unshift(entry);
-  localStorage.setItem(STORAGE_KEYS.JOURNAL, JSON.stringify(entries));
+async function saveJournalEntry(entry: Omit<JournalEntry, 'id'>): Promise<void> {
+  await saveJournalEntryService(entry);
 }
 
-function deleteJournalEntry(id: string): void {
-  const entries = getJournalEntries().filter(e => e.id !== id);
-  localStorage.setItem(STORAGE_KEYS.JOURNAL, JSON.stringify(entries));
+async function deleteJournalEntry(id: string): Promise<void> {
+  await deleteJournalEntryService(id);
 }
 
-function getMoodEntries(): MoodEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.MOOD);
-    return data ? JSON.parse(data) : [];
-  } catch { return []; }
+async function getMoodEntries(): Promise<MoodEntry[]> {
+  return await getMoodEntriesService();
 }
 
 // ==================== INLINE AI HELPER ====================
@@ -83,10 +78,21 @@ export default function JournalPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [prompts, setPrompts] = useState<string[]>([]);
+  const [showEncouragement, setShowEncouragement] = useState(false);
+  const [floatingEmoji, setFloatingEmoji] = useState<string | null>(null);
+  const [showDrawing, setShowDrawing] = useState(false);
+  const [currentDrawing, setCurrentDrawing] = useState<string>("");
+  const [drawingInterpretation, setDrawingInterpretation] = useState<string>("");
 
   useEffect(() => {
-    setEntries(getJournalEntries());
-    setMoodEntries(getMoodEntries());
+    const loadData = async () => {
+      const journals = await getJournalEntries();
+      const moods = await getMoodEntries();
+      setEntries(journals);
+      setMoodEntries(moods);
+    };
+    loadData();
+    
     // Pick 4 random prompts
     const shuffled = [...JOURNAL_PROMPTS].sort(() => Math.random() - 0.5);
     setPrompts(shuffled.slice(0, 4));
@@ -112,36 +118,53 @@ export default function JournalPage() {
   };
 
   const handleSave = async () => {
-    if (!content.trim()) return;
+    if (!content.trim() && !currentDrawing) return;
     setSaving(true);
     setShowSummary(false);
+    setShowEncouragement(true);
+    
+    // Random encouraging emoji
+    const emojis = ['✨', '💝', '🌟', '🫂', '💖', '🌈', '⭐'];
+    setFloatingEmoji(emojis[Math.floor(Math.random() * emojis.length)]);
+    
     await new Promise(r => setTimeout(r, 800));
     const now = new Date().toISOString();
     const summary = generateJournalSummary(content);
-    const entry: JournalEntry = {
-      id: `journal_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    const entry: Omit<JournalEntry, 'id'> = {
       date: format(new Date(), 'yyyy-MM-dd'),
       content: content.trim(),
       prompt: selectedPrompt,
       isPrivate,
       aiSummary: summary,
+      drawing: currentDrawing || undefined,
+      drawingAiInterpretation: drawingInterpretation || undefined,
       timestamp: now,
       createdAt: now,
       updatedAt: now,
     };
-    saveJournalEntry(entry);
-    setEntries(getJournalEntries());
+    await saveJournalEntry(entry);
+    const updatedEntries = await getJournalEntries();
+    setEntries(updatedEntries);
     setAiSummary(summary);
     setShowSummary(true);
     setContent('');
     setSelectedPrompt('');
     setIsPrivate(false);
+    setCurrentDrawing('');
+    setDrawingInterpretation('');
+    setShowDrawing(false);
     setSaving(false);
+    
+    setTimeout(() => {
+      setShowEncouragement(false);
+      setFloatingEmoji(null);
+    }, 2000);
   };
 
-  const handleDelete = (id: string) => {
-    deleteJournalEntry(id);
-    setEntries(getJournalEntries());
+  const handleDelete = async (id: string) => {
+    await deleteJournalEntry(id);
+    const updatedEntries = await getJournalEntries();
+    setEntries(updatedEntries);
     setDeleteConfirm(null);
     setExpandedId(null);
   };
@@ -149,6 +172,8 @@ export default function JournalPage() {
   return (
     <>
       <Navbar />
+      {floatingEmoji && <FloatingEmoji emoji={floatingEmoji} duration={2} />}
+      
       <div className="min-h-screen bg-white pt-20 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
@@ -157,15 +182,84 @@ export default function JournalPage() {
               <div className="p-2.5 rounded-xl bg-black/6">
                 <BookOpen className="w-6 h-6 text-[#0a0a0a]" />
               </div>
-              <h1 className="text-3xl font-bold text-[#0a0a0a]" style={{ fontFamily: 'var(--font-heading)' }}>Journal Space</h1>
+              <h1 className="text-3xl font-bold text-[#0a0a0a]" style={{ fontFamily: 'var(--font-heading)' }}>
+                Journal Space{' '}
+                <motion.span
+                  animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.2, 1] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  className="inline-block"
+                >
+                  ✍️
+                </motion.span>
+              </h1>
             </div>
-            <p className="text-[#9a9a9a] ml-14">Write freely. No one is judging you here.</p>
+            <p className="text-[#9a9a9a] ml-14">Write freely. No one is judging you here :)</p>
+            {showEncouragement && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="ml-14 mt-2"
+              >
+                <RandomEncouragement trigger={showEncouragement} />
+              </motion.div>
+            )}
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
             {/* ===== LEFT COLUMN — Editor ===== */}
             <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}
               className="lg:col-span-3 space-y-6">
+
+              {/* Mood Insights */}
+              <MoodInsights 
+                entries={moodEntries}
+                todayScore={moodEntries.find(e => e.date === format(new Date(), 'yyyy-MM-dd'))?.score}
+              />
+
+              {/* Drawing Canvas */}
+              <div className="glass-card rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[#9a9a9a] flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Visual Expression
+                  </h3>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowDrawing(!showDrawing)}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-black/[0.08] hover:bg-black/4 transition-colors"
+                  >
+                    {showDrawing ? 'Hide Canvas' : 'Draw Your Feelings'}
+                  </motion.button>
+                </div>
+
+                <AnimatePresence>
+                  {showDrawing && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      <DrawingCanvas
+                        onSave={(imageData, interpretation) => {
+                          setCurrentDrawing(imageData);
+                          setDrawingInterpretation(interpretation || '');
+                        }}
+                        initialImage={currentDrawing}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {!showDrawing && currentDrawing && (
+                  <div className="p-4 rounded-xl bg-[#f8f8f8] border border-black/[0.06]">
+                    <p className="text-xs text-[#555555] flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-green-500" />
+                      Drawing saved — it will be included with your journal entry
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* Prompt Chips */}
               <div className="glass-card rounded-2xl p-6">
@@ -196,7 +290,10 @@ export default function JournalPage() {
                 />
                 <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
                   <div className="flex items-center gap-4">
-                    <span className="text-xs text-[#9a9a9a]">{content.length} characters</span>
+                    <span className="text-xs text-[#9a9a9a]">
+                      {content.length} characters
+                      {currentDrawing && <span className="ml-2">+ drawing</span>}
+                    </span>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <div className="relative">
                         <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)}
@@ -208,7 +305,7 @@ export default function JournalPage() {
                     </label>
                   </div>
                   <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                    onClick={handleSave} disabled={!content.trim() || saving}
+                    onClick={handleSave} disabled={(!content.trim() && !currentDrawing) || saving}
                     className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#0a0a0a] text-white font-medium text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1a1a1a] transition-colors">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     {saving ? 'Saving...' : 'Save Entry'}
@@ -306,6 +403,27 @@ export default function JournalPage() {
                                   <p className="text-xs text-[#555555] italic">&ldquo;{entry.prompt}&rdquo;</p>
                                 )}
                                 <p className="text-sm text-[#0a0a0a] leading-relaxed whitespace-pre-wrap">{entry.content}</p>
+                                
+                                {/* Drawing */}
+                                {entry.drawing && (
+                                  <div className="mt-3">
+                                    <img 
+                                      src={entry.drawing} 
+                                      alt="Journal drawing"
+                                      className="w-full rounded-lg border border-black/[0.08]"
+                                    />
+                                    {entry.drawingAiInterpretation && (
+                                      <div className="mt-2 p-3 rounded-lg bg-[#8B7EC8]/10 border border-[#8B7EC8]/20">
+                                        <p className="text-xs text-[#555555] flex items-center gap-1 mb-1">
+                                          <Sparkles className="w-3 h-3 text-[#8B7EC8]" />
+                                          AI Interpretation
+                                        </p>
+                                        <p className="text-xs text-[#0a0a0a]/70">{entry.drawingAiInterpretation}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
                                 {entry.aiSummary && (
                                   <div className="bg-black/4 rounded-lg p-3">
                                     <p className="text-xs text-[#0a0a0a]/50 flex items-center gap-1 mb-1"><Sparkles className="w-3 h-3" />AI Summary</p>

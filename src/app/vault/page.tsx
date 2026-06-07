@@ -10,11 +10,35 @@ import {
   FileText, Clock,
 } from "lucide-react";
 import {
-  getUserProfile, updateUserProfile, getVaultEntries,
-  saveVaultEntry, deleteVaultEntry,
-} from "@/lib/store";
+  getUserProfile as getUserProfileService,
+  saveUserProfile,
+  getVaultEntries as getVaultEntriesService,
+  saveVaultEntry as saveVaultEntryService,
+  deleteVaultEntry as deleteVaultEntryService,
+} from "@/lib/supabase-service";
 import { generateId, formatDate } from "@/lib/utils";
 import type { VaultEntry, UserProfile } from "@/lib/types";
+
+// Helper wrappers
+async function getUserProfile(): Promise<UserProfile | null> {
+  return await getUserProfileService();
+}
+
+async function updateUserProfile(updates: Partial<UserProfile>): Promise<void> {
+  await saveUserProfile(updates);
+}
+
+async function getVaultEntries(): Promise<VaultEntry[]> {
+  return await getVaultEntriesService();
+}
+
+async function saveVaultEntry(entry: Omit<VaultEntry, 'id'>): Promise<void> {
+  await saveVaultEntryService(entry);
+}
+
+async function deleteVaultEntry(id: string): Promise<void> {
+  await deleteVaultEntryService(id);
+}
 
 // ── PIN Input ─────────────────────────────────────────────────────────────────
 function PinInput({ length = 4, onComplete }: { length?: number; onComplete: (pin: string) => void }) {
@@ -156,10 +180,14 @@ export default function VaultPage() {
   const [deleteAll, setDeleteAll] = useState(false);
 
   useEffect(() => {
-    const p = getUserProfile();
-    setProfile(p);
-    if (!p?.pin) setSettingPin(true);
-    setEntries(getVaultEntries());
+    const loadData = async () => {
+      const p = await getUserProfile();
+      setProfile(p);
+      if (!p?.pin) setSettingPin(true);
+      const vaultEntries = await getVaultEntries();
+      setEntries(vaultEntries);
+    };
+    loadData();
   }, []);
 
   const handlePinEnter = (pin: string) => {
@@ -169,9 +197,9 @@ export default function VaultPage() {
 
   const handleNewPin = (pin: string) => { setNewPin(pin); setPinStep("confirm"); };
 
-  const handleConfirmPin = (pin: string) => {
+  const handleConfirmPin = async (pin: string) => {
     if (pin === newPin) {
-      updateUserProfile({ pin });
+      await updateUserProfile({ pin });
       setProfile((p) => p ? { ...p, pin } : p);
       setSettingPin(false);
       setUnlocked(true);
@@ -182,14 +210,19 @@ export default function VaultPage() {
     }
   };
 
-  const handleSaveEntry = (title: string, content: string) => {
+  const handleSaveEntry = async (title: string, content: string) => {
     const now = new Date().toISOString();
-    const entry: VaultEntry = { id: generateId(), title, content, createdAt: now, updatedAt: now };
-    saveVaultEntry(entry);
-    setEntries(getVaultEntries());
+    const entry: Omit<VaultEntry, 'id'> = { title, content, createdAt: now, updatedAt: now };
+    await saveVaultEntry(entry);
+    const updatedEntries = await getVaultEntries();
+    setEntries(updatedEntries);
   };
 
-  const handleDelete = (id: string) => { deleteVaultEntry(id); setEntries(getVaultEntries()); };
+  const handleDelete = async (id: string) => { 
+    await deleteVaultEntry(id); 
+    const updatedEntries = await getVaultEntries();
+    setEntries(updatedEntries); 
+  };
   const handleLock = () => { setUnlocked(false); setPinError(""); };
 
   return (
@@ -303,7 +336,13 @@ export default function VaultPage() {
                       className="p-4 rounded-xl bg-red-50 border border-red-200">
                       <p className="text-red-600 text-sm mb-3">⚠️ This will permanently delete all vault entries. Are you sure?</p>
                       <div className="flex gap-2">
-                        <button onClick={() => { entries.forEach((e) => deleteVaultEntry(e.id)); setEntries([]); setDeleteAll(false); }}
+                        <button onClick={async () => { 
+                        for (const e of entries) {
+                          await deleteVaultEntry(e.id);
+                        }
+                        setEntries([]); 
+                        setDeleteAll(false); 
+                      }}
                           className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-all">
                           Yes, Delete All
                         </button>

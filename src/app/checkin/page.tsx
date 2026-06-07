@@ -33,27 +33,23 @@ import {
 } from 'lucide-react';
 import type { MoodEntry, MoodType, TriggerType } from '@/lib/types';
 import { MOOD_LIST, MOOD_COLORS, TRIGGER_LIST } from '@/lib/types';
+import { FloatingEmoji, FloatingHearts } from '@/components/ui/FloatingEmoji';
+import { InteractiveButton } from '@/components/ui/InteractiveButton';
+import { EncouragementBadge } from '@/components/ui/EncouragementBadge';
 
-// ===== INLINE STORE HELPERS =====
+// ===== SUPABASE INTEGRATION =====
+import { getMoodEntries as getMoodEntriesService, saveMoodEntry as saveMoodEntryService } from '@/lib/supabase-service';
+
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
-function getMoodEntries(): MoodEntry[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem('ruangkamu_moods');
-  return data ? JSON.parse(data) : [];
+async function getMoodEntries(): Promise<MoodEntry[]> {
+  return await getMoodEntriesService();
 }
 
-function saveMoodEntry(entry: MoodEntry) {
-  const entries = getMoodEntries();
-  // Replace if same date, otherwise push
-  const idx = entries.findIndex((e) => e.date === entry.date);
-  if (idx >= 0) entries[idx] = entry;
-  else entries.push(entry);
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('ruangkamu_moods', JSON.stringify(entries));
-  }
+async function saveMoodEntry(entry: Omit<MoodEntry, 'id' | 'createdAt'>): Promise<void> {
+  await saveMoodEntryService(entry);
 }
 
 // ===== TRIGGER ICON MAP =====
@@ -245,6 +241,9 @@ export default function CheckinPage() {
   const [note, setNote] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showBadge, setShowBadge] = useState(false);
+  const [showHearts, setShowHearts] = useState(false);
+  const [badgeType, setBadgeType] = useState<string>('');
 
   const noteMaxLength = 300;
 
@@ -277,23 +276,38 @@ export default function CheckinPage() {
     if (step > 0) setStep(step - 1);
   };
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!selectedMood) return;
     const now = new Date();
-    const entry: MoodEntry = {
-      id: generateId(),
+    const entry: Omit<MoodEntry, 'id' | 'createdAt'> = {
       date: now.toISOString().split('T')[0],
       mood: selectedMood,
       score,
       triggers: selectedTriggers,
       note,
       timestamp: now.toISOString(),
-      createdAt: now.toISOString(),
     };
-    saveMoodEntry(entry);
+    await saveMoodEntry(entry);
     setSaved(true);
     setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 3000);
+    
+    // Show hearts for high scores
+    if (score >= 8) {
+      setShowHearts(true);
+    }
+    
+    // Check milestones
+    const allEntries = await getMoodEntries();
+    if (allEntries.length === 1) {
+      setBadgeType('first-checkin');
+      setShowBadge(true);
+      setTimeout(() => setShowBadge(false), 5000);
+    }
+    
+    setTimeout(() => {
+      setShowConfetti(false);
+      setShowHearts(false);
+    }, 3000);
   }, [selectedMood, score, selectedTriggers, note]);
 
   const toggleTrigger = (trigger: TriggerType) => {
@@ -323,6 +337,8 @@ export default function CheckinPage() {
   return (
     <div className="min-h-screen bg-white pt-14">
       <Navbar />
+      <EncouragementBadge badgeId={badgeType} show={showBadge} onClose={() => setShowBadge(false)} />
+      {showHearts && <FloatingHearts count={10} />}
 
       <div className="mx-auto max-w-2xl px-4 py-6 sm:py-10">
         {/* Title */}
@@ -332,9 +348,16 @@ export default function CheckinPage() {
           className="text-center mb-6"
         >
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0a0a0a]">
-            How are you <span className="gradient-text">feeling</span>?
+            How are you <span className="gradient-text">feeling</span>?{' '}
+            <motion.span
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              className="inline-block"
+            >
+              💭
+            </motion.span>
           </h1>
-          <p className="text-sm text-[#9a9a9a] mt-1">Be honest — this is your safe space.</p>
+          <p className="text-sm text-[#9a9a9a] mt-1">Be honest — this is your safe space :)</p>
         </motion.div>
 
         {/* Step Indicator */}
@@ -600,16 +623,23 @@ export default function CheckinPage() {
                   transition={{ delay: 0.3 }}
                   className="text-xl font-bold text-[#0a0a0a] mb-2"
                 >
-                  Check-in complete! 🎉
+                  Check-in complete!{' '}
+                  <motion.span
+                    animate={{ rotate: [0, 14, -8, 14, 0] }}
+                    transition={{ duration: 0.5, repeat: 3 }}
+                    className="inline-block"
+                  >
+                    🎉
+                  </motion.span>
                 </motion.h2>
 
                 <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.5 }}
-                  className="text-sm text-[#9a9a9a] mb-8"
+                  className="text-sm text-[#555555] mb-8"
                 >
-                  Thank you for being honest with yourself today.
+                  Thank you for being honest with yourself today {'<3'}
                 </motion.p>
 
                 {/* Summary */}

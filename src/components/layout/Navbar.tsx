@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { Menu, X, Lock, User, LayoutDashboard, SmilePlus, BookOpen, BarChart3, Brain } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 interface NavbarProps { showNav?: boolean; }
 
@@ -89,6 +90,11 @@ export function Navbar({ showNav = true }: NavbarProps) {
 
           {/* Right */}
           <div className="flex items-center gap-1">
+            {/* Theme Toggle */}
+            <div className="hidden md:block">
+              <ThemeToggle />
+            </div>
+            
             <Link href="/vault"
               className={`hidden md:flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 ${
                 isActive("/vault") ? "bg-black/8 text-[#0a0a0a]" : "text-[#0a0a0a]/35 hover:text-[#0a0a0a] hover:bg-black/5"

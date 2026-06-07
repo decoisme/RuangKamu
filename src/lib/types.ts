@@ -67,6 +67,8 @@ export interface JournalEntry {
   prompt: string;
   isPrivate: boolean;
   aiSummary?: string;
+  drawing?: string; // base64 image data
+  drawingAiInterpretation?: string;
   timestamp: string;
   createdAt: string;
   updatedAt: string;

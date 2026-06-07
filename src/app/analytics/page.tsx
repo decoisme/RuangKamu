@@ -18,15 +18,11 @@ import {
   type MoodEntry, type MoodType, type MoodInsight, type TriggerType
 } from '@/lib/types';
 
-// ==================== INLINE STORE HELPERS ====================
-const STORAGE_KEYS = { MOOD: 'ruangkamu_mood' };
+// ==================== SUPABASE INTEGRATION ====================
+import { getMoodEntries as getMoodEntriesService } from '@/lib/supabase-service';
 
-function getMoodEntries(): MoodEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.MOOD);
-    return data ? JSON.parse(data) : [];
-  } catch { return []; }
+async function getMoodEntries(): Promise<MoodEntry[]> {
+  return await getMoodEntriesService();
 }
 
 // ==================== INLINE ANALYTICS ====================
@@ -140,7 +136,13 @@ const CHART_COLORS = ['#0a0a0a', '#555555', '#7DA87B', '#D4A0A0', '#FFD93D', '#F
 // ==================== MAIN PAGE ====================
 export default function AnalyticsPage() {
   const [entries, setEntries] = useState<MoodEntry[]>([]);
-  useEffect(() => { setEntries(getMoodEntries()); }, []);
+  useEffect(() => { 
+    const loadData = async () => {
+      const moodEntries = await getMoodEntries();
+      setEntries(moodEntries);
+    };
+    loadData();
+  }, []);
 
   const avgScore   = useMemo(() => calculateAverageScore(entries), [entries]);
   const topMood    = useMemo(() => getMostFrequentMood(entries), [entries]);
