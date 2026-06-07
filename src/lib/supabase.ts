@@ -42,15 +42,19 @@ export function isSupabaseConfigured(): boolean {
     'PLACEHOLDER',
   ];
 
-  const urlValid =
-    finalUrl && finalUrl.length > 0 &&
+  const urlValid = Boolean(
+    finalUrl && 
+    finalUrl.length > 0 &&
     finalUrl.startsWith('https://') &&
     finalUrl.includes('.supabase.co') &&
-    !placeholders.includes(finalUrl);
+    !placeholders.includes(finalUrl)
+  );
 
-  const keyValid =
-    finalKey && finalKey.length > 20 &&
-    !placeholders.includes(finalKey);
+  const keyValid = Boolean(
+    finalKey && 
+    finalKey.length > 20 &&
+    !placeholders.includes(finalKey)
+  );
 
   // Debug logging
   if (typeof window !== 'undefined') {
