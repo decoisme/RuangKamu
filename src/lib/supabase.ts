@@ -42,7 +42,7 @@ export function isSupabaseConfigured(): boolean {
     'PLACEHOLDER',
   ];
 
-  const urlValid = Boolean(
+  const urlValid: boolean = Boolean(
     finalUrl && 
     finalUrl.length > 0 &&
     finalUrl.startsWith('https://') &&
@@ -50,7 +50,7 @@ export function isSupabaseConfigured(): boolean {
     !placeholders.includes(finalUrl)
   );
 
-  const keyValid = Boolean(
+  const keyValid: boolean = Boolean(
     finalKey && 
     finalKey.length > 20 &&
     !placeholders.includes(finalKey)
@@ -69,5 +69,6 @@ export function isSupabaseConfigured(): boolean {
     });
   }
 
-  return urlValid && keyValid;
+  const result: boolean = urlValid && keyValid;
+  return result;
 }
