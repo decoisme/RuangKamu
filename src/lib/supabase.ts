@@ -1,8 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Client-side environment variables (available in browser)
+// Next.js should automatically inject NEXT_PUBLIC_* variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// Fallback for development if env vars not loaded
+// (This ensures Google OAuth works even if env var injection has issues)
+const FALLBACK_URL = 'https://lzbqcjmnbiystmepglza.supabase.co';
+const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6YnFjam1uYml5c3RtZXBnbHphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NzU4ODEsImV4cCI6MjA5NjM1MTg4MX0.QQE4Dha_Q3OeL04P9BEHjfuoEa40Da4Ne4D50tGEvcs';
+
+const finalUrl = supabaseUrl || FALLBACK_URL;
+const finalKey = supabaseAnonKey || FALLBACK_KEY;
 
 /**
  * Supabase client instance.
@@ -13,8 +22,8 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
  * The isSupabaseConfigured() check will return false, triggering localStorage fallback.
  */
 export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-anon-key-for-build-time'
+  finalUrl || 'https://placeholder.supabase.co',
+  finalKey || 'placeholder-anon-key-for-build-time'
 );
 
 /**
@@ -34,24 +43,25 @@ export function isSupabaseConfigured(): boolean {
   ];
 
   const urlValid =
-    supabaseUrl.length > 0 &&
-    supabaseUrl.startsWith('https://') &&
-    supabaseUrl.includes('.supabase.co') &&
-    !placeholders.includes(supabaseUrl);
+    finalUrl && finalUrl.length > 0 &&
+    finalUrl.startsWith('https://') &&
+    finalUrl.includes('.supabase.co') &&
+    !placeholders.includes(finalUrl);
 
   const keyValid =
-    supabaseAnonKey.length > 20 &&
-    !placeholders.includes(supabaseAnonKey);
+    finalKey && finalKey.length > 20 &&
+    !placeholders.includes(finalKey);
 
   // Debug logging
   if (typeof window !== 'undefined') {
     console.log('[Supabase Config Check]', {
       urlValid,
       keyValid,
-      urlLength: supabaseUrl.length,
-      keyLength: supabaseAnonKey.length,
-      url: supabaseUrl.substring(0, 30) + '...',
-      configured: urlValid && keyValid
+      urlLength: finalUrl?.length || 0,
+      keyLength: finalKey?.length || 0,
+      url: finalUrl?.substring(0, 40) + '...',
+      configured: urlValid && keyValid,
+      source: supabaseUrl ? 'env' : 'fallback'
     });
   }
 
