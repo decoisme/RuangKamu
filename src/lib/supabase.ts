@@ -69,6 +69,7 @@ export function isSupabaseConfigured(): boolean {
     });
   }
 
+  // Explicit boolean return to satisfy TypeScript strict mode
   const result: boolean = urlValid && keyValid;
   return result;
 }
