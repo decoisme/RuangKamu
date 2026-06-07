@@ -146,15 +146,13 @@ export default function AuthPage() {
       await loginWithGoogle();
       // Redirect akan di-handle oleh Supabase
     } catch (error: any) {
-      if (error?.message?.includes('Supabase configuration')) {
-        setLoginErrors({ 
-          general: 'Google login is only available with Supabase. Using localStorage mode for now.' 
-        });
-      } else {
-        setLoginErrors({ 
-          general: error?.message || 'Google login failed. Please try again.' 
-        });
-      }
+      const errorMessage = error?.message || 'Google login failed. Please try again.';
+      
+      // Set error di kedua tabs untuk consistency
+      setLoginErrors({ general: errorMessage });
+      setRegErrors({ general: errorMessage });
+      
+      console.error('Google login error:', error);
     }
   };
 

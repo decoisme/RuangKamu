@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+// Client-side environment variables (available in browser)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 /**
  * Supabase client instance.
@@ -41,6 +42,18 @@ export function isSupabaseConfigured(): boolean {
   const keyValid =
     supabaseAnonKey.length > 20 &&
     !placeholders.includes(supabaseAnonKey);
+
+  // Debug logging
+  if (typeof window !== 'undefined') {
+    console.log('[Supabase Config Check]', {
+      urlValid,
+      keyValid,
+      urlLength: supabaseUrl.length,
+      keyLength: supabaseAnonKey.length,
+      url: supabaseUrl.substring(0, 30) + '...',
+      configured: urlValid && keyValid
+    });
+  }
 
   return urlValid && keyValid;
 }
