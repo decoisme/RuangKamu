@@ -7,19 +7,20 @@ import { Sun, Moon, Monitor } from "lucide-react";
 type Theme = "light" | "dark" | "system";
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>("light"); // Default to light
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    // Load saved theme
+    // Load saved theme, default to light if not set
     const saved = localStorage.getItem("ruangkamu_theme") as Theme;
     if (saved) {
       setTheme(saved);
       applyTheme(saved);
     } else {
-      // Default to system
-      setTheme("system");
-      applyTheme("system");
+      // Default to light instead of system
+      setTheme("light");
+      localStorage.setItem("ruangkamu_theme", "light");
+      applyTheme("light");
     }
   }, []);
 

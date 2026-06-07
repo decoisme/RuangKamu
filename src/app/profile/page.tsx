@@ -1,5 +1,8 @@
 "use client";
 
+// Disable static generation for this page (uses dynamic data)
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/Navbar";
@@ -10,12 +13,66 @@ import {
   Database, Eye, EyeOff,
 } from "lucide-react";
 import {
-  getUserProfile, updateUserProfile, clearAllData, exportAllData,
-  getMoodEntries, getJournalEntries, deleteMoodEntry, deleteJournalEntry,
-} from "@/lib/store";
+  getUserProfile as getUserProfileService,
+  saveUserProfile,
+  getMoodEntries,
+  getJournalEntries,
+  getGratitudeEntries,
+  getVaultEntries,
+  deleteMoodEntry,
+  deleteJournalEntry,
+} from "@/lib/supabase-service";
 import { generateMonthlyReport } from "@/lib/pdf-export";
 import { formatDate } from "@/lib/utils";
 import type { UserProfile } from "@/lib/types";
+
+// Helper functions for profile operations
+async function getUserProfile(): Promise<UserProfile | null> {
+  return await getUserProfileService();
+}
+
+async function updateUserProfile(updates: Partial<UserProfile>): Promise<void> {
+  await saveUserProfile(updates);
+}
+
+async function exportAllData(): Promise<string> {
+  const [moods, journals, gratitudes, vaults, profile] = await Promise.all([
+    getMoodEntries(),
+    getJournalEntries(),
+    getGratitudeEntries(),
+    getVaultEntries(),
+    getUserProfile(),
+  ]);
+
+  const data = {
+    profile,
+    moods,
+    journals,
+    gratitudes,
+    vaults,
+    exportedAt: new Date().toISOString(),
+  };
+
+  return JSON.stringify(data, null, 2);
+}
+
+async function clearAllData(): Promise<void> {
+  // Clear all localStorage data
+  if (typeof window !== 'undefined') {
+    const keys = [
+      'ruangkamu_moods',
+      'ruangkamu_journal',
+      'ruangkamu_gratitude',
+      'ruangkamu_vault',
+      'ruangkamu_user',
+      'ruangkamu_theme',
+    ];
+    keys.forEach(key => localStorage.removeItem(key));
+  }
+  
+  // Note: Supabase data deletion would require proper auth and DELETE operations
+  // For now, this only clears localStorage
+}
 
 // ── Setting Section Card ──────────────────────────────────────────────────────
 function SettingCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
@@ -107,32 +164,46 @@ export default function ProfilePage() {
   const [confirmJournal, setConfirmJournal] = useState(false);
   const [confirmAccount, setConfirmAccount] = useState(false);
   const [confirmAccount2, setConfirmAccount2] = useState(false);
+  const [entryCounts, setEntryCounts] = useState({ moods: 0, journals: 0 });
 
-  useEffect(() => { setProfile(getUserProfile()); }, []);
+  useEffect(() => { 
+    const loadData = async () => {
+      const profile = await getUserProfile();
+      setProfile(profile);
+      
+      // Load entry counts
+      const [moods, journals] = await Promise.all([
+        getMoodEntries(),
+        getJournalEntries(),
+      ]);
+      setEntryCounts({ moods: moods.length, journals: journals.length });
+    };
+    loadData();
+  }, []);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  const saveName = () => {
+  const saveName = async () => {
     if (newName.trim()) {
-      updateUserProfile({ name: newName.trim() });
+      await updateUserProfile({ name: newName.trim() });
       setProfile((p) => p ? { ...p, name: newName.trim() } : p);
       showToast("Name updated!");
     }
     setEditingName(false);
   };
 
-  const savePin = (pin: string) => {
-    updateUserProfile({ pin });
+  const savePin = async (pin: string) => {
+    await updateUserProfile({ pin });
     setProfile((p) => p ? { ...p, pin } : p);
     setChangingPin(false);
     showToast("PIN updated!");
   };
 
-  const exportData = () => {
-    const data = exportAllData();
+  const exportData = async () => {
+    const data = await exportAllData();
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -141,17 +212,30 @@ export default function ProfilePage() {
     showToast("Data exported!");
   };
 
-  const clearMood = () => {
-    getMoodEntries().forEach((e) => deleteMoodEntry(e.id));
-    setConfirmMood(false); showToast("Mood data cleared.");
+  const clearMood = async () => {
+    const moods = await getMoodEntries();
+    for (const entry of moods) {
+      await deleteMoodEntry(entry.id);
+    }
+    setEntryCounts(prev => ({ ...prev, moods: 0 }));
+    setConfirmMood(false);
+    showToast("Mood data cleared.");
   };
 
-  const clearJournal = () => {
-    getJournalEntries().forEach((e) => deleteJournalEntry(e.id));
-    setConfirmJournal(false); showToast("Journal data cleared.");
+  const clearJournal = async () => {
+    const journals = await getJournalEntries();
+    for (const entry of journals) {
+      await deleteJournalEntry(entry.id);
+    }
+    setEntryCounts(prev => ({ ...prev, journals: 0 }));
+    setConfirmJournal(false);
+    showToast("Journal data cleared.");
   };
 
-  const deleteAccount = () => { clearAllData(); window.location.href = "/auth"; };
+  const deleteAccount = () => { 
+    clearAllData(); 
+    window.location.href = "/auth"; 
+  };
 
   const initials = profile?.name
     ? profile.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
@@ -256,7 +340,7 @@ export default function ProfilePage() {
                 </button>
               }
             />
-            <SettingRow label="Clear Mood Data" desc={`${getMoodEntries().length} entries`}
+            <SettingRow label="Clear Mood Data" desc={`${entryCounts.moods} entries`}
               action={
                 !confirmMood ? (
                   <button onClick={() => setConfirmMood(true)}
@@ -271,7 +355,7 @@ export default function ProfilePage() {
                 )
               }
             />
-            <SettingRow label="Clear Journal Data" desc={`${getJournalEntries().length} entries`}
+            <SettingRow label="Clear Journal Data" desc={`${entryCounts.journals} entries`}
               action={
                 !confirmJournal ? (
                   <button onClick={() => setConfirmJournal(true)}
