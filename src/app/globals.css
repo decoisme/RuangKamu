@@ -1,26 +1,225 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* ── White-primary Palette ── */
+  --color-bg:            #ffffff;
+  --color-bg-soft:       #f7f7f7;
+  --color-surface-1:     #f2f2f2;
+  --color-surface-2:     #ebebeb;
+  --color-surface-3:     #e0e0e0;
+  --color-border:        rgba(0,0,0,0.07);
+  --color-border-strong: rgba(0,0,0,0.12);
+  --color-black:         #0a0a0a;
+  --color-ink-1:         #0a0a0a;
+  --color-ink-2:         #5a5a5a;
+  --color-ink-3:         #9a9a9a;
+  --color-ink-4:         #c5c5c5;
+
+  /* ── Typography ── */
+  --font-sans:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Outfit', 'Inter', system-ui, sans-serif;
+  --font-accent:  'Poppins', system-ui, sans-serif;
+
+  /* ── Animations ── */
+  --animate-float:      float 7s ease-in-out infinite;
+  --animate-float-slow: float 10s ease-in-out infinite;
+  --animate-float-2:    float 7s ease-in-out 1.5s infinite;
+  --animate-float-3:    float 9s ease-in-out 3s infinite;
+  --animate-float-4:    float 6s ease-in-out 0.8s infinite;
+  --animate-spin-slow:  spin 30s linear infinite;
+  --animate-breathe:    breathe 5s ease-in-out infinite;
+  --animate-shimmer:    shimmer 3s linear infinite;
+  --animate-blink:      blink 3s ease-in-out infinite;
+  --animate-smile:      smile 4s ease-in-out infinite;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Keyframes ─────────────────────────────────────────────────────────── */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-12px) rotate(1deg); }
+  66%       { transform: translateY(-6px) rotate(-1deg); }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.06); }
 }
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95%           { transform: scaleY(0.1); }
+}
+
+@keyframes smile {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%       { transform: translateY(-6px) scale(1.04); }
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+
+html { scroll-behavior: smooth; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #ffffff;
+  color: #0a0a0a;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar        { width: 4px; }
+::-webkit-scrollbar-track  { background: #f5f5f5; }
+::-webkit-scrollbar-thumb  { background: #d0d0d0; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #b0b0b0; }
+
+/* ── Selection ─────────────────────────────────────────────────────────── */
+
+::selection { background: rgba(0,0,0,0.10); color: #0a0a0a; }
+
+/* ── Glass (light) ─────────────────────────────────────────────────────── */
+
+.glass {
+  background: rgba(255,255,255,0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0,0,0,0.07);
+}
+
+.glass-strong {
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(0,0,0,0.09);
+}
+
+.glass-card {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.07);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+}
+
+/* ── Apple-style cards ─────────────────────────────────────────────────── */
+
+.apple-card {
+  background: #f8f8f8;
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 20px;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+
+.apple-card:hover {
+  border-color: rgba(0,0,0,0.13);
+  background: #f4f4f4;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+.btn-primary {
+  background: #0a0a0a;
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 100px;
+  border: none;
+  transition: all 0.15s ease;
+}
+.btn-primary:hover  { background: #1a1a1a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+.btn-primary:active { transform: translateY(0); }
+
+.btn-secondary {
+  background: transparent;
+  color: #0a0a0a;
+  border: 1.5px solid rgba(0,0,0,0.18);
+  border-radius: 100px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.btn-secondary:hover {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.28);
+}
+
+/* ── Ambient ───────────────────────────────────────────────────────────── */
+
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ── Gradient text ─────────────────────────────────────────────────────── */
+
+.gradient-text {
+  background: linear-gradient(135deg, #0a0a0a 0%, #5a5a5a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-bright {
+  background: linear-gradient(135deg, #0a0a0a 0%, #3a3a3a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Divider ───────────────────────────────────────────────────────────── */
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,0.08), transparent);
+}
+
+/* ── Recharts ──────────────────────────────────────────────────────────── */
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: rgba(0,0,0,0.05);
+}
+.recharts-text { fill: #9a9a9a !important; font-size: 11px; }
+.recharts-default-tooltip {
+  background: #ffffff !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.10) !important;
+}
+
+/* ── Focus ─────────────────────────────────────────────────────────────── */
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.08);
+}
+
+/* ── Mood selected state (monochrome) ──────────────────────────────────── */
+
+.mood-selected {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.25) !important;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 4px 20px rgba(0,0,0,0.06);
+}
+
+/* ── Decorative face objects ───────────────────────────────────────────── */
+
+.deco-face { animation: smile 4s ease-in-out infinite; }
+.deco-face-2 { animation: smile 5s ease-in-out 1s infinite; }
+.deco-face-3 { animation: smile 6s ease-in-out 2s infinite; }
+.deco-float  { animation: float 7s ease-in-out infinite; }
+.deco-float-2 { animation: float 9s ease-in-out 2s infinite; }
+.deco-float-3 { animation: float 6s ease-in-out 4s infinite; }
+
+/* ── Breathing ring ────────────────────────────────────────────────────── */
+
+.breathing-ring   { animation: breathe 8s ease-in-out infinite; }
+.breathing-ring-2 { animation: breathe 8s ease-in-out 0.5s infinite; }
+.breathing-ring-3 { animation: breathe 8s ease-in-out 1s infinite; }
