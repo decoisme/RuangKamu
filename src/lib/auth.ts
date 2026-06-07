@@ -65,17 +65,20 @@ export async function loginWithEmail(email: string, password: string) {
   }
   
   // Fallback: localStorage login
-  const user = {
-    id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-    email,
-    name: email.split('@')[0],
-    theme: 'light',
-    createdAt: new Date().toISOString(),
-    isLoggedIn: true,
-  };
+  // Check if user exists
+  const existingUserData = localStorage.getItem('ruangkamu_user');
+  if (existingUserData) {
+    const existingUser = JSON.parse(existingUserData);
+    if (existingUser.email === email) {
+      // User exists, update login status
+      existingUser.isLoggedIn = true;
+      localStorage.setItem('ruangkamu_user', JSON.stringify(existingUser));
+      return { user: existingUser };
+    }
+  }
   
-  localStorage.setItem('ruangkamu_user', JSON.stringify(user));
-  return { user };
+  // User not found - throw error
+  throw new Error('No account found with this email. Please register first.');
 }
 
 // Register dengan Supabase Auth
@@ -96,6 +99,15 @@ export async function registerWithEmail(email: string, password: string, name: s
   }
   
   // Fallback: localStorage register
+  // Check if email already registered
+  const existingUserData = localStorage.getItem('ruangkamu_user');
+  if (existingUserData) {
+    const existingUser = JSON.parse(existingUserData);
+    if (existingUser.email === email) {
+      throw new Error('Email already registered. Please login instead.');
+    }
+  }
+  
   const user = {
     id: Date.now().toString(36) + Math.random().toString(36).substr(2),
     email,
@@ -124,6 +136,23 @@ export async function logout() {
       localStorage.setItem('ruangkamu_user', JSON.stringify(userData));
     }
   }
+}
+
+// Login with Google OAuth
+export async function loginWithGoogle() {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Google login requires Supabase configuration. Please set up your environment variables.');
+  }
+  
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/dashboard`,
+    },
+  });
+  
+  if (error) throw error;
+  return data;
 }
 
 // Check localStorage auth (sync version for quick checks)
