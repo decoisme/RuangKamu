@@ -33,22 +33,34 @@ export default function AuthCallback() {
           const googleName = user.user_metadata?.full_name || user.user_metadata?.name || '';
           const email = user.email || '';
           
-          // Check if profile exists in our profiles table
+          // Check if profile exists using auth user ID (not email!)
           const { data: existingProfile, error: profileError } = await supabase
             .from('profiles')
             .select('*')
-            .eq('email', email)
+            .eq('id', user.id)
             .single();
 
           console.log('Existing profile:', existingProfile);
 
-          if (existingProfile && existingProfile.name) {
-            // Profile exists with name, go to dashboard
-            console.log('Profile found, going to dashboard');
-            router.push('/dashboard');
+          if (existingProfile) {
+            // Profile exists (created by trigger), check if name needs update
+            if (!existingProfile.name || existingProfile.name === email.split('@')[0]) {
+              // Default name was used, show prompt to set proper name
+              console.log('Profile found but using default name, showing prompt');
+              setUserId(user.id);
+              setUserEmail(email);
+              setUserName(googleName);
+              setLoading(false);
+              setShowNamePrompt(true);
+            } else {
+              // Profile has proper name, go to dashboard
+              console.log('Profile complete, going to dashboard');
+              router.push('/dashboard');
+            }
           } else {
-            // New user or no name set - show welcome prompt
-            console.log('No profile or no name, showing prompt');
+            // Profile doesn't exist yet (trigger might not have run)
+            // Show prompt to create profile
+            console.log('No profile found, showing prompt');
             setUserId(user.id);
             setUserEmail(email);
             setUserName(googleName);
@@ -74,43 +86,22 @@ export default function AuthCallback() {
     try {
       setLoading(true);
       
-      // Check if profile exists by email
-      const { data: existingProfile } = await supabase
+      // Use user ID (from auth) to upsert profile
+      const { error } = await supabase
         .from('profiles')
-        .select('id')
-        .eq('email', userEmail)
-        .single();
+        .upsert({ 
+          id: userId, // Use auth user ID as primary key
+          name: userName.trim(),
+          email: userEmail,
+          theme: 'light',
+          is_logged_in: true,
+        }, {
+          onConflict: 'id'
+        });
 
-      if (existingProfile) {
-        // Update existing profile
-        const { error } = await supabase
-          .from('profiles')
-          .update({ 
-            name: userName.trim(),
-            is_logged_in: true,
-            updated_at: new Date().toISOString()
-          })
-          .eq('email', userEmail);
-
-        if (error) {
-          console.error('Error updating profile:', error);
-          throw error;
-        }
-      } else {
-        // Insert new profile
-        const { error } = await supabase
-          .from('profiles')
-          .insert({
-            name: userName.trim(),
-            email: userEmail,
-            theme: 'light',
-            is_logged_in: true,
-          });
-
-        if (error) {
-          console.error('Error creating profile:', error);
-          throw error;
-        }
+      if (error) {
+        console.error('Error saving profile:', error);
+        throw error;
       }
       
       console.log('Profile saved successfully');

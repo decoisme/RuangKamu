@@ -33,15 +33,23 @@ function setLocalStorage<T>(key: string, data: T[]): void {
 
 // ===== MOOD ENTRIES =====
 
-export async function getMoodEntries(userId: string = DEFAULT_USER_ID): Promise<MoodEntry[]> {
+export async function getMoodEntries(userId?: string): Promise<MoodEntry[]> {
   if (!USE_SUPABASE) {
     return getLocalStorage<MoodEntry>('ruangkamu_moods');
+  }
+
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    profileId = user.id;
   }
 
   const { data, error } = await supabase
     .from('mood_entries')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', profileId)
     .order('date', { ascending: false });
 
   if (error) {
@@ -63,7 +71,7 @@ export async function getMoodEntries(userId: string = DEFAULT_USER_ID): Promise<
 
 export async function saveMoodEntry(
   entry: Omit<MoodEntry, 'id' | 'createdAt'>,
-  userId: string = DEFAULT_USER_ID
+  userId?: string
 ): Promise<MoodEntry | null> {
   if (!USE_SUPABASE) {
     const entries = getLocalStorage<MoodEntry>('ruangkamu_moods');
@@ -85,10 +93,18 @@ export async function saveMoodEntry(
     return newEntry;
   }
 
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    profileId = user.id;
+  }
+
   const { data, error } = await supabase
     .from('mood_entries')
     .upsert({
-      user_id: userId,
+      user_id: profileId,
       date: entry.date,
       mood: entry.mood,
       score: entry.score,
@@ -141,15 +157,23 @@ export async function deleteMoodEntry(id: string): Promise<boolean> {
 
 // ===== JOURNAL ENTRIES =====
 
-export async function getJournalEntries(userId: string = DEFAULT_USER_ID): Promise<JournalEntry[]> {
+export async function getJournalEntries(userId?: string): Promise<JournalEntry[]> {
   if (!USE_SUPABASE) {
     return getLocalStorage<JournalEntry>('ruangkamu_journal');
+  }
+
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    profileId = user.id;
   }
 
   const { data, error } = await supabase
     .from('journal_entries')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', profileId)
     .order('date', { ascending: false });
 
   if (error) {
@@ -174,7 +198,7 @@ export async function getJournalEntries(userId: string = DEFAULT_USER_ID): Promi
 
 export async function saveJournalEntry(
   entry: Omit<JournalEntry, 'id'>,
-  userId: string = DEFAULT_USER_ID
+  userId?: string
 ): Promise<JournalEntry | null> {
   if (!USE_SUPABASE) {
     const entries = getLocalStorage<JournalEntry>('ruangkamu_journal');
@@ -187,10 +211,18 @@ export async function saveJournalEntry(
     return newEntry;
   }
 
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    profileId = user.id;
+  }
+
   const { data, error } = await supabase
     .from('journal_entries')
     .insert({
-      user_id: userId,
+      user_id: profileId,
       date: entry.date,
       content: entry.content,
       prompt: entry.prompt,
@@ -253,15 +285,23 @@ interface GratitudeEntry {
   createdAt: string;
 }
 
-export async function getGratitudeEntries(userId: string = DEFAULT_USER_ID): Promise<GratitudeEntry[]> {
+export async function getGratitudeEntries(userId?: string): Promise<GratitudeEntry[]> {
   if (!USE_SUPABASE) {
     return getLocalStorage<GratitudeEntry>('ruangkamu_gratitude');
+  }
+
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    profileId = user.id;
   }
 
   const { data, error } = await supabase
     .from('gratitude_entries')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', profileId)
     .order('date', { ascending: false });
 
   if (error) {
@@ -279,7 +319,7 @@ export async function getGratitudeEntries(userId: string = DEFAULT_USER_ID): Pro
 
 export async function saveGratitudeEntry(
   entry: Omit<GratitudeEntry, 'id' | 'createdAt'>,
-  userId: string = DEFAULT_USER_ID
+  userId?: string
 ): Promise<GratitudeEntry | null> {
   if (!USE_SUPABASE) {
     const entries = getLocalStorage<GratitudeEntry>('ruangkamu_gratitude');
@@ -301,10 +341,18 @@ export async function saveGratitudeEntry(
     return newEntry;
   }
 
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    profileId = user.id;
+  }
+
   const { data, error } = await supabase
     .from('gratitude_entries')
     .upsert({
-      user_id: userId,
+      user_id: profileId,
       date: entry.date,
       items: entry.items,
     }, {
@@ -328,16 +376,24 @@ export async function saveGratitudeEntry(
 
 // ===== USER PROFILE =====
 
-export async function getUserProfile(userId: string = DEFAULT_USER_ID): Promise<UserProfile | null> {
+export async function getUserProfile(userId?: string): Promise<UserProfile | null> {
   if (!USE_SUPABASE) {
     const data = localStorage.getItem('ruangkamu_user');
     return data ? JSON.parse(data) : null;
   }
 
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    profileId = user.id;
+  }
+
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', userId)
+    .eq('id', profileId)
     .single();
 
   if (error) {
@@ -356,7 +412,7 @@ export async function getUserProfile(userId: string = DEFAULT_USER_ID): Promise<
   };
 }
 
-export async function saveUserProfile(profile: Partial<UserProfile>, userId: string = DEFAULT_USER_ID): Promise<UserProfile | null> {
+export async function saveUserProfile(profile: Partial<UserProfile>, userId?: string): Promise<UserProfile | null> {
   if (!USE_SUPABASE) {
     const existing = localStorage.getItem('ruangkamu_user');
     const updated = existing ? { ...JSON.parse(existing), ...profile } : profile;
@@ -364,10 +420,18 @@ export async function saveUserProfile(profile: Partial<UserProfile>, userId: str
     return updated as UserProfile;
   }
 
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    profileId = user.id;
+  }
+
   const { data, error } = await supabase
     .from('profiles')
     .upsert({
-      id: userId,
+      id: profileId,
       name: profile.name,
       email: profile.email,
       pin: profile.pin,
@@ -395,15 +459,23 @@ export async function saveUserProfile(profile: Partial<UserProfile>, userId: str
 
 // ===== VAULT ENTRIES =====
 
-export async function getVaultEntries(userId: string = DEFAULT_USER_ID): Promise<VaultEntry[]> {
+export async function getVaultEntries(userId?: string): Promise<VaultEntry[]> {
   if (!USE_SUPABASE) {
     return getLocalStorage<VaultEntry>('ruangkamu_vault');
+  }
+
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    profileId = user.id;
   }
 
   const { data, error } = await supabase
     .from('vault_entries')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', profileId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -422,7 +494,7 @@ export async function getVaultEntries(userId: string = DEFAULT_USER_ID): Promise
 
 export async function saveVaultEntry(
   entry: Omit<VaultEntry, 'id'>,
-  userId: string = DEFAULT_USER_ID
+  userId?: string
 ): Promise<VaultEntry | null> {
   if (!USE_SUPABASE) {
     const entries = getLocalStorage<VaultEntry>('ruangkamu_vault');
@@ -435,10 +507,18 @@ export async function saveVaultEntry(
     return newEntry;
   }
 
+  // If no userId provided, get from current session
+  let profileId = userId;
+  if (!profileId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    profileId = user.id;
+  }
+
   const { data, error } = await supabase
     .from('vault_entries')
     .insert({
-      user_id: userId,
+      user_id: profileId,
       title: entry.title,
       content: entry.content,
     })
