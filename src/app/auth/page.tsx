@@ -16,7 +16,6 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { loginWithEmail, registerWithEmail, loginWithGoogle } from '@/lib/auth';
-import { isSupabaseConfigured } from '@/lib/supabase';
 
 // ===== FLOATING PARTICLES =====
 function FloatingParticles() {
@@ -362,12 +361,6 @@ export default function AuthPage() {
                   </svg>
                   Continue with Google
                 </motion.button>
-
-                {!isSupabaseConfigured() && (
-                  <p className="text-xs text-[#9a9a9a] text-center mt-2">
-                    Google login requires Supabase setup
-                  </p>
-                )}
               </motion.div>
             ) : (
               <motion.div
@@ -554,11 +547,6 @@ export default function AuthPage() {
                   Continue with Google
                 </motion.button>
 
-                {!isSupabaseConfigured() && (
-                  <p className="text-xs text-[#9a9a9a] text-center mt-2">
-                    Google login requires Supabase setup
-                  </p>
-                )}
               </motion.div>
             )}
           </AnimatePresence>
