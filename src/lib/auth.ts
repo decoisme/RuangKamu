@@ -144,10 +144,15 @@ export async function loginWithGoogle() {
     throw new Error('Google login requires Supabase configuration. Please set up your environment variables.');
   }
   
+  // Use current origin for redirect (works for both dev & prod)
+  const redirectUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}/auth/callback`
+    : '/auth/callback';
+  
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
+      redirectTo: redirectUrl,
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
