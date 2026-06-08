@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Outfit, Poppins } from "next/font/google";
 import "./globals.css";
 import { AuthGuard } from "@/components/AuthGuard";
+import QuickCheckinFAB from "@/components/ui/QuickCheckinFAB";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit", display: "swap" });
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthGuard>
             {children}
           </AuthGuard>
+          <QuickCheckinFAB />
         </main>
       </body>
     </html>
