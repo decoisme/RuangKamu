@@ -82,7 +82,7 @@ export default function CheckinPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa]">
+    <div className="min-h-screen bg-[#fafafa] pt-14">
       <Navbar />
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
