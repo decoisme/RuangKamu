@@ -1,12 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HeartPulse } from 'lucide-react';
 import CheckinModal from './CheckinModal';
+import { isAuthenticated } from '@/lib/auth';
 
 export default function QuickCheckinFAB() {
   const [showModal, setShowModal] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  
+  useEffect(() => {
+    const checkAuth = async () => {
+      const auth = await isAuthenticated();
+      setAuthenticated(auth);
+    };
+    checkAuth();
+  }, [pathname]);
+  
+  // Hide FAB on landing page or auth pages
+  if (pathname === '/' || pathname?.startsWith('/auth')) {
+    return null;
+  }
+  
+  const handleClick = () => {
+    if (!authenticated) {
+      router.push('/auth');
+      return;
+    }
+    setShowModal(true);
+  };
   
   return (
     <>
@@ -17,7 +43,7 @@ export default function QuickCheckinFAB() {
         transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
-        onClick={() => setShowModal(true)}
+        onClick={handleClick}
         className="fixed bottom-6 right-6 z-40 w-16 h-16 rounded-full bg-[#0a0a0a] text-white shadow-2xl flex items-center justify-center hover:bg-black transition-all group"
         aria-label="Quick mood check-in"
       >
@@ -39,7 +65,7 @@ export default function QuickCheckinFAB() {
       
       {/* Check-in Modal */}
       <AnimatePresence>
-        {showModal && (
+        {showModal && authenticated && (
           <CheckinModal 
             onClose={() => setShowModal(false)}
             onSuccess={() => {
