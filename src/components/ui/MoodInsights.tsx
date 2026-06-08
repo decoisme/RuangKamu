@@ -7,7 +7,7 @@ import {
   Coffee, Music, BookOpen, Sun, Users, Heart,
   MessageCircle, Leaf, Smile
 } from "lucide-react";
-import type { MoodEntry } from "@/lib/types";
+import type { MoodCheckin } from "@/lib/checkin-service";
 import { MOOD_LIST, MOOD_COLORS } from "@/lib/types";
 
 interface Activity {
@@ -87,17 +87,17 @@ const ACTIVITIES: Activity[] = [
 ];
 
 interface MoodInsightsProps {
-  entries: MoodEntry[];
+  checkins: MoodCheckin[];
   todayScore?: number;
 }
 
-export function MoodInsights({ entries, todayScore }: MoodInsightsProps) {
+export function MoodInsights({ checkins, todayScore }: MoodInsightsProps) {
   const [currentInsight, setCurrentInsight] = useState(0);
   const [suggestedActivities, setSuggestedActivities] = useState<Activity[]>([]);
 
   // Generate insights
   const insights = useMemo(() => {
-    if (entries.length === 0) return [];
+    if (checkins.length === 0) return [];
     
     const result: Array<{
       type: "trend" | "pattern" | "suggestion";
@@ -108,10 +108,10 @@ export function MoodInsights({ entries, todayScore }: MoodInsightsProps) {
     }> = [];
 
     // Recent trend
-    const recentEntries = entries.slice(0, 7);
+    const recentEntries = checkins.slice(0, 7);
     if (recentEntries.length >= 3) {
       const avgRecent = recentEntries.reduce((sum, e) => sum + e.score, 0) / recentEntries.length;
-      const olderEntries = entries.slice(7, 14);
+      const olderEntries = checkins.slice(7, 14);
       
       if (olderEntries.length >= 3) {
         const avgOlder = olderEntries.reduce((sum, e) => sum + e.score, 0) / olderEntries.length;
@@ -139,7 +139,7 @@ export function MoodInsights({ entries, todayScore }: MoodInsightsProps) {
 
     // Best day pattern
     const dayScores: Record<string, number[]> = {};
-    entries.forEach(entry => {
+    checkins.forEach(entry => {
       const day = new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long' });
       if (!dayScores[day]) dayScores[day] = [];
       dayScores[day].push(entry.score);
@@ -163,13 +163,12 @@ export function MoodInsights({ entries, todayScore }: MoodInsightsProps) {
     // Streak motivation
     let streak = 0;
     const today = new Date();
+    const uniqueDates = new Set(checkins.map(c => c.date));
     for (let i = 0; i < 30; i++) {
       const checkDate = new Date(today);
       checkDate.setDate(checkDate.getDate() - i);
       const dateStr = checkDate.toISOString().split('T')[0];
-      if (entries.find(e => e.date === dateStr)) {
-        streak++;
-      } else break;
+      if (uniqueDates.has(dateStr)) { streak++; } else break;
     }
     
     if (streak >= 7) {
@@ -184,12 +183,12 @@ export function MoodInsights({ entries, todayScore }: MoodInsightsProps) {
 
     // Common triggers
     const allTriggers: Record<string, number> = {};
-    entries.forEach(entry => {
+    checkins.forEach(entry => {
       entry.triggers?.forEach(trigger => {
         allTriggers[trigger] = (allTriggers[trigger] || 0) + 1;
       });
     });
-    
+
     const topTrigger = Object.entries(allTriggers).sort((a, b) => b[1] - a[1])[0];
     if (topTrigger && topTrigger[1] >= 3) {
       result.push({
@@ -202,7 +201,7 @@ export function MoodInsights({ entries, todayScore }: MoodInsightsProps) {
     }
 
     return result;
-  }, [entries]);
+  }, [checkins]);
 
   // Suggest activities based on current mood
   useEffect(() => {

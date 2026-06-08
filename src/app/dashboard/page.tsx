@@ -46,17 +46,12 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import type { MoodEntry, MoodType, UserProfile } from '@/lib/types';
+import type { MoodType, UserProfile } from '@/lib/types';
 import { MOOD_LIST, MOOD_COLORS } from '@/lib/types';
 
-// ===== SUPABASE INTEGRATION =====
-import { getMoodEntries as getMoodEntriesService } from '@/lib/supabase-service';
-import { getTodayCheckins, getTodaySummary } from '@/lib/checkin-service';
+// ===== CHECKIN SERVICE (new system) =====
+import { getMoodCheckins, getTodayCheckins, getTodaySummary } from '@/lib/checkin-service';
 import type { MoodCheckin, MoodDailySummary } from '@/lib/checkin-service';
-
-async function getMoodEntries(): Promise<MoodEntry[]> {
-  return await getMoodEntriesService();
-}
 
 function getUser(): UserProfile | null {
   if (typeof window === 'undefined') return null;
@@ -341,7 +336,7 @@ function EmptyState() {
 // ===== MAIN DASHBOARD PAGE =====
 export default function DashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [entries, setEntries] = useState<MoodEntry[]>([]);
+  const [checkins, setCheckins] = useState<MoodCheckin[]>([]);
   const [todayCheckins, setTodayCheckins] = useState<MoodCheckin[]>([]);
   const [todaySummary, setTodaySummary] = useState<MoodDailySummary | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -353,33 +348,31 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadData = async () => {
       setUser(getUser());
-      const [moodEntries, checkins, summary] = await Promise.all([
-        getMoodEntries(),
+      const [allCheckins, todayC, summary] = await Promise.all([
+        getMoodCheckins(),
         getTodayCheckins(),
         getTodaySummary(),
       ]);
-      setEntries(moodEntries);
-      setTodayCheckins(checkins);
+      setCheckins(allCheckins);
+      setTodayCheckins(todayC);
       setTodaySummary(summary);
       setIsLoaded(true);
 
-      // Check for milestones
-      if (moodEntries.length === 1) {
+      // Milestone badges based on unique days checked in
+      const uniqueDays = new Set(allCheckins.map(c => c.date)).size;
+      if (uniqueDays === 1) {
         setBadgeType('first-checkin');
         setShowBadge(true);
         setTimeout(() => setShowBadge(false), 5000);
-      } else if (moodEntries.length === 3) {
+      } else if (uniqueDays === 3) {
         setBadgeType('3-day-streak');
         setShowBadge(true);
         setTimeout(() => setShowBadge(false), 5000);
-      } else if (moodEntries.length === 7) {
+      } else if (uniqueDays === 7) {
         setBadgeType('7-day-streak');
         setShowBadge(true);
         setShowHearts(true);
-        setTimeout(() => {
-          setShowBadge(false);
-          setShowHearts(false);
-        }, 5000);
+        setTimeout(() => { setShowBadge(false); setShowHearts(false); }, 5000);
       }
     };
     loadData();
@@ -388,12 +381,7 @@ export default function DashboardPage() {
   const greeting = getGreeting();
   const GreetingIcon = greeting.icon;
 
-  // Today's check-in
-  const today = new Date().toISOString().split('T')[0];
-  const todayEntry = entries.find((e) => e.date === today);
-  const todayMood = todayEntry ? MOOD_LIST.find((m) => m.type === todayEntry.mood) : null;
-
-  // Last 7 days data for chart
+  // Last 7 days data for chart — aggregate checkins per day
   const weeklyData = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const result = [];
@@ -401,29 +389,34 @@ export default function DashboardPage() {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      const entry = entries.find((e) => e.date === dateStr);
+      const dayCheckins = checkins.filter(c => c.date === dateStr);
+      const avgScore = dayCheckins.length > 0
+        ? dayCheckins.reduce((sum, c) => sum + c.score, 0) / dayCheckins.length
+        : 0;
+      // Dominant mood
+      const moodCounts: Record<string, number> = {};
+      dayCheckins.forEach(c => { moodCounts[c.mood] = (moodCounts[c.mood] || 0) + 1; });
+      const dominantMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'kosong';
       result.push({
         day: days[d.getDay()],
-        score: entry ? entry.score : 0,
-        mood: entry ? entry.mood : 'kosong',
+        score: Number(avgScore.toFixed(1)),
+        mood: dominantMood,
         date: dateStr,
       });
     }
     return result;
-  }, [entries]);
+  }, [checkins]);
 
-  const hasData = entries.length > 0;
+  const hasData = checkins.length > 0;
 
   // Insights based on data
   const insights = useMemo(() => {
     if (!hasData) return [];
     const result = [];
 
-    // Most common mood
+    // Most common mood across all checkins
     const moodCounts: Record<string, number> = {};
-    entries.forEach((e) => {
-      moodCounts[e.mood] = (moodCounts[e.mood] || 0) + 1;
-    });
+    checkins.forEach((c) => { moodCounts[c.mood] = (moodCounts[c.mood] || 0) + 1; });
     const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0];
     if (topMood) {
       const moodInfo = MOOD_LIST.find((m) => m.type === topMood[0]);
@@ -440,7 +433,7 @@ export default function DashboardPage() {
     }
 
     // Average score
-    const avgScore = entries.reduce((sum, e) => sum + e.score, 0) / entries.length;
+    const avgScore = checkins.reduce((sum, c) => sum + c.score, 0) / checkins.length;
     result.push({
       icon: Lightbulb,
       title: 'Average Mood Score',
@@ -454,15 +447,14 @@ export default function DashboardPage() {
       color: avgScore >= 7 ? '#7DA87B' : avgScore >= 4 ? '#6B9BD2' : '#D4A0A0',
     });
 
-    // Streak
+    // Streak (unique days)
+    const uniqueDates = new Set(checkins.map(c => c.date));
     let streak = 0;
     const d = new Date();
     for (let i = 0; i < 30; i++) {
       const dateStr = d.toISOString().split('T')[0];
-      if (entries.find((e) => e.date === dateStr)) {
-        streak++;
-        d.setDate(d.getDate() - 1);
-      } else break;
+      if (uniqueDates.has(dateStr)) { streak++; d.setDate(d.getDate() - 1); }
+      else break;
     }
     if (streak > 0) {
       result.push({
@@ -477,7 +469,7 @@ export default function DashboardPage() {
     }
 
     return result;
-  }, [entries, hasData]);
+  }, [checkins, hasData]);
 
   const dateString = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -513,11 +505,15 @@ export default function DashboardPage() {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="flex items-center gap-2 text-[#9a9a9a] mb-1">
-            <GreetingIcon className="w-4 h-4 text-[#0a0a0a]/40" />
-            <span className="text-sm">{dateString}</span>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-8 h-8 rounded-xl bg-[#0a0a0a] flex items-center justify-center">
+              <GreetingIcon className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-xs font-semibold text-[#9a9a9a] uppercase tracking-widest">
+              {dateString}
+            </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#0a0a0a]">
+          <h1 className="text-2xl sm:text-3xl font-black text-[#0a0a0a] leading-tight tracking-tight">
             {greeting.text},{' '}
             <span className="gradient-text">{user?.name || 'Friend'}</span>{' '}
             <motion.span
@@ -528,14 +524,9 @@ export default function DashboardPage() {
               :)
             </motion.span>
           </h1>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="text-sm text-[#555555] mt-1 italic"
-          >
-            We&apos;re glad you&apos;re here {'<3'}
-          </motion.p>
+          <p className="text-sm text-[#9a9a9a] mt-1.5">
+            We&apos;re glad you&apos;re here ♥
+          </p>
         </motion.div>
 
         {!hasData ? (
@@ -589,8 +580,7 @@ export default function DashboardPage() {
                     <div className="space-y-2 max-h-[180px] overflow-y-auto">
                       {todayCheckins.slice(0, 3).map((checkin) => {
                         const moodInfo = MOOD_LIST.find(m => m.type === checkin.mood);
-                        const timeStr = checkin.time.substring(0, 5); // HH:MM
-                        
+                        const timeStr = checkin.time.substring(0, 5);
                         return (
                           <motion.div
                             key={checkin.id}
@@ -598,7 +588,7 @@ export default function DashboardPage() {
                             animate={{ opacity: 1, x: 0 }}
                             className="flex items-center gap-3 p-2 rounded-xl bg-black/[0.02] hover:bg-black/[0.04] transition-colors"
                           >
-                            <div 
+                            <div
                               className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                               style={{ background: `${moodInfo?.color}15` }}
                             >
@@ -608,17 +598,12 @@ export default function DashboardPage() {
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-medium text-[#0a0a0a]">{timeStr}</span>
                                 <span className="text-xs text-[#9a9a9a]">•</span>
-                                <span 
-                                  className="text-xs font-medium"
-                                  style={{ color: moodInfo?.color }}
-                                >
+                                <span className="text-xs font-medium" style={{ color: moodInfo?.color }}>
                                   {checkin.score}/10
                                 </span>
                               </div>
                               {checkin.note && (
-                                <p className="text-xs text-[#9a9a9a] truncate mt-0.5">
-                                  {checkin.note}
-                                </p>
+                                <p className="text-xs text-[#9a9a9a] truncate mt-0.5">{checkin.note}</p>
                               )}
                             </div>
                           </motion.div>
@@ -627,64 +612,13 @@ export default function DashboardPage() {
                     </div>
 
                     {todayCheckins.length > 3 && (
-                      <Link 
+                      <Link
                         href="/checkin"
                         className="block text-center text-xs text-[#0a0a0a]/60 hover:text-[#0a0a0a] pt-2 transition-colors"
                       >
                         +{todayCheckins.length - 3} more check-ins
                       </Link>
                     )}
-                  </div>
-                ) : todayEntry && todayMood ? (
-                  /* Legacy single entry display */
-                  <div className="flex items-center gap-5">
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.3 }}
-                      className="w-20 h-20 rounded-2xl flex items-center justify-center relative"
-                      style={{ background: `${todayMood.color}15`, border: `1px solid ${todayMood.color}30` }}
-                    >
-                      <motion.span
-                        animate={{ 
-                          rotate: [0, 10, -10, 10, 0],
-                          scale: [1, 1.1, 1]
-                        }}
-                        transition={{ 
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: "easeInOut"
-                        }}
-                        className="text-4xl relative z-10"
-                      >
-                        {todayMood.emoji}
-                      </motion.span>
-                      
-                      <motion.div
-                        animate={{ 
-                          scale: [1, 1.2, 1],
-                          opacity: [0.3, 0.5, 0.3]
-                        }}
-                        transition={{ 
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: "easeInOut"
-                        }}
-                        className="absolute inset-0 rounded-2xl"
-                        style={{ background: `${todayMood.color}10` }}
-                      />
-                    </motion.div>
-                    <div>
-                      <p className="text-lg font-semibold text-[#0a0a0a]">{todayMood.label}</p>
-                      <p className="text-sm text-[#9a9a9a]">
-                        Score: <span style={{ color: todayMood.color }}>{todayEntry.score}/10</span>
-                      </p>
-                      {todayEntry.note && (
-                        <p className="text-xs text-[#9a9a9a]/80 mt-1 line-clamp-2">
-                          &ldquo;{todayEntry.note}&rdquo;
-                        </p>
-                      )}
-                    </div>
                   </div>
                 ) : (
                   /* Empty state */
@@ -794,9 +728,9 @@ export default function DashboardPage() {
             {/* Mood Insights & Suggestions */}
             <div>
               <h3 className="text-sm font-medium text-[#9a9a9a] mb-3">Your Insights</h3>
-              <MoodInsights 
-                entries={entries}
-                todayScore={todayEntry?.score}
+              <MoodInsights
+                checkins={checkins}
+                todayScore={todaySummary?.averageScore}
               />
             </div>
 
@@ -807,11 +741,11 @@ export default function DashboardPage() {
             </div>
 
             {/* Mood Calendar */}
-            {entries.length > 0 && (
+            {checkins.length > 0 && (
               <div>
                 <h3 className="text-sm font-medium text-[#9a9a9a] mb-3">This Month</h3>
-                <MoodCalendar 
-                  entries={entries}
+                <MoodCalendar
+                  checkins={checkins}
                   onDateClick={(date) => console.log('Selected date:', date)}
                 />
               </div>

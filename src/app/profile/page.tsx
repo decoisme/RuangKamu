@@ -15,13 +15,11 @@ import {
 import {
   getUserProfile as getUserProfileService,
   saveUserProfile,
-  getMoodEntries,
   getJournalEntries,
-  getGratitudeEntries,
   getVaultEntries,
-  deleteMoodEntry,
   deleteJournalEntry,
 } from "@/lib/supabase-service";
+import { getMoodCheckins, deleteMoodCheckin } from "@/lib/checkin-service";
 import { generateMonthlyReport } from "@/lib/pdf-export";
 import { formatDate } from "@/lib/utils";
 import type { UserProfile } from "@/lib/types";
@@ -36,10 +34,9 @@ async function updateUserProfile(updates: Partial<UserProfile>): Promise<void> {
 }
 
 async function exportAllData(): Promise<string> {
-  const [moods, journals, gratitudes, vaults, profile] = await Promise.all([
-    getMoodEntries(),
+  const [moods, journals, vaults, profile] = await Promise.all([
+    getMoodCheckins(),
     getJournalEntries(),
-    getGratitudeEntries(),
     getVaultEntries(),
     getUserProfile(),
   ]);
@@ -48,7 +45,6 @@ async function exportAllData(): Promise<string> {
     profile,
     moods,
     journals,
-    gratitudes,
     vaults,
     exportedAt: new Date().toISOString(),
   };
@@ -173,7 +169,7 @@ export default function ProfilePage() {
       
       // Load entry counts
       const [moods, journals] = await Promise.all([
-        getMoodEntries(),
+        getMoodCheckins(),
         getJournalEntries(),
       ]);
       setEntryCounts({ moods: moods.length, journals: journals.length });
@@ -213,9 +209,9 @@ export default function ProfilePage() {
   };
 
   const clearMood = async () => {
-    const moods = await getMoodEntries();
-    for (const entry of moods) {
-      await deleteMoodEntry(entry.id);
+    const checkins = await getMoodCheckins();
+    for (const c of checkins) {
+      await deleteMoodCheckin(c.id);
     }
     setEntryCounts(prev => ({ ...prev, moods: 0 }));
     setConfirmMood(false);

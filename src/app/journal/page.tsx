@@ -15,8 +15,10 @@ import {
 import { format, parseISO } from 'date-fns';
 import {
   JOURNAL_PROMPTS, MOOD_LIST, MOOD_COLORS,
-  type JournalEntry, type MoodEntry, type MoodType
+  type JournalEntry, type MoodType
 } from '@/lib/types';
+import { getMoodCheckins } from '@/lib/checkin-service';
+import type { MoodCheckin } from '@/lib/checkin-service';
 import { FloatingEmoji } from '@/components/ui/FloatingEmoji';
 import { RandomEncouragement } from '@/components/ui/EncouragementBadge';
 import { MoodInsights } from '@/components/ui/MoodInsights';
@@ -27,7 +29,6 @@ import {
   getJournalEntries as getJournalEntriesService,
   saveJournalEntry as saveJournalEntryService,
   deleteJournalEntry as deleteJournalEntryService,
-  getMoodEntries as getMoodEntriesService,
 } from '@/lib/supabase-service';
 
 async function getJournalEntries(): Promise<JournalEntry[]> {
@@ -40,10 +41,6 @@ async function saveJournalEntry(entry: Omit<JournalEntry, 'id'>): Promise<void> 
 
 async function deleteJournalEntry(id: string): Promise<void> {
   await deleteJournalEntryService(id);
-}
-
-async function getMoodEntries(): Promise<MoodEntry[]> {
-  return await getMoodEntriesService();
 }
 
 // ==================== INLINE AI HELPER ====================
@@ -70,7 +67,7 @@ function generateJournalSummary(content: string): string {
 // ==================== MAIN PAGE ====================
 export default function JournalPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [moodEntries, setMoodEntries] = useState<MoodEntry[]>([]);
+  const [checkins, setCheckins] = useState<MoodCheckin[]>([]);
   const [content, setContent] = useState('');
   const [selectedPrompt, setSelectedPrompt] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
@@ -90,9 +87,9 @@ export default function JournalPage() {
   useEffect(() => {
     const loadData = async () => {
       const journals = await getJournalEntries();
-      const moods = await getMoodEntries();
+      const moodCheckins = await getMoodCheckins();
       setEntries(journals);
-      setMoodEntries(moods);
+      setCheckins(moodCheckins);
     };
     loadData();
     
@@ -111,9 +108,10 @@ export default function JournalPage() {
     );
   }, [entries, searchQuery]);
 
-  const getMoodForDate = useCallback((date: string): MoodEntry | undefined => {
-    return moodEntries.find(m => m.date === date);
-  }, [moodEntries]);
+  // Get first checkin for a given date (for mood badge)
+  const getMoodForDate = useCallback((date: string): MoodCheckin | undefined => {
+    return checkins.find(c => c.date === date);
+  }, [checkins]);
 
   const handlePromptClick = (prompt: string) => {
     setSelectedPrompt(prompt);
@@ -181,27 +179,21 @@ export default function JournalPage() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2.5 rounded-xl bg-black/6">
-                <BookOpen className="w-6 h-6 text-[#0a0a0a]" />
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-xl bg-[#0a0a0a] flex items-center justify-center">
+                <BookOpen className="w-4 h-4 text-white" />
               </div>
-              <h1 className="text-3xl font-bold text-[#0a0a0a]" style={{ fontFamily: 'var(--font-heading)' }}>
-                Journal Space{' '}
-                <motion.span
-                  animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.2, 1] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  className="inline-block"
-                >
-                  ✍️
-                </motion.span>
-              </h1>
+              <span className="text-xs font-semibold text-[#9a9a9a] uppercase tracking-widest">Journal</span>
             </div>
-            <p className="text-[#9a9a9a] ml-14">Write freely. No one is judging you here :)</p>
+            <h1 className="text-3xl font-black text-[#0a0a0a] leading-tight tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>
+              Journal Space
+            </h1>
+            <p className="text-[#9a9a9a] mt-1.5 text-sm">Write freely. No one is judging you here :)</p>
             {showEncouragement && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="ml-14 mt-2"
+                className="mt-2"
               >
                 <RandomEncouragement trigger={showEncouragement} />
               </motion.div>
@@ -214,9 +206,9 @@ export default function JournalPage() {
               className="lg:col-span-3 space-y-6">
 
               {/* Mood Insights */}
-              <MoodInsights 
-                entries={moodEntries}
-                todayScore={moodEntries.find(e => e.date === format(new Date(), 'yyyy-MM-dd'))?.score}
+              <MoodInsights
+                checkins={checkins}
+                todayScore={checkins.find(c => c.date === format(new Date(), 'yyyy-MM-dd'))?.score}
               />
 
               {/* Drawing Canvas */}

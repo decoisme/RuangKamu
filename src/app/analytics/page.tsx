@@ -100,7 +100,7 @@ export default function AnalyticsPage() {
   }
 
   // Empty state
-  if (!data || (data.totalEntries === 0 && data.totalCheckins === 0)) {
+  if (!data || data.totalCheckins === 0) {
     return (
       <>
         <Navbar />
@@ -155,7 +155,7 @@ export default function AnalyticsPage() {
     { 
       label: 'Total Check-ins', 
       value: data.totalCheckins.toString(), 
-      sub: `+${data.totalEntries} entries`, 
+      sub: 'total', 
       icon: BarChart3, 
       color: '#555555' 
     },
@@ -168,13 +168,14 @@ export default function AnalyticsPage() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2.5 rounded-xl bg-black/5">
-                <BarChart3 className="w-6 h-6 text-[#0a0a0a]" />
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-xl bg-[#0a0a0a] flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-white" />
               </div>
-              <h1 className="text-3xl font-bold text-[#0a0a0a]" style={{ fontFamily: 'var(--font-heading)' }}>Mood Analytics</h1>
+              <span className="text-xs font-semibold text-[#9a9a9a] uppercase tracking-widest">Analytics</span>
             </div>
-            <p className="text-[#9a9a9a] ml-14">Discover patterns in your emotional journey.</p>
+            <h1 className="text-3xl font-black text-[#0a0a0a] leading-tight tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>Mood Analytics</h1>
+            <p className="text-[#9a9a9a] mt-1.5 text-sm">Discover patterns in your emotional journey.</p>
           </motion.div>
 
           {/* Stats Row */}
@@ -267,7 +268,7 @@ export default function AnalyticsPage() {
                   <p className="text-sm text-[#9a9a9a]">No trigger data yet.</p>
                 ) : data.triggerDistribution.map((t, i) => {
                   const maxVal = data.triggerDistribution[0]?.value || 1;
-                  const pct = Math.round((t.value / (data.totalCheckins + data.totalEntries)) * 100);
+                  const pct = data.totalCheckins > 0 ? Math.round((t.value / data.totalCheckins) * 100) : 0;
                   return (
                     <motion.div key={t.type} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.05 }}>
                       <div className="flex items-center justify-between mb-1">

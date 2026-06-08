@@ -13,19 +13,11 @@ import {
 } from 'lucide-react';
 import {
   MOOD_LIST, MOOD_COLORS, COPING_STRATEGIES, JOURNAL_PROMPTS,
-  type MoodEntry, type MoodType, type CopingStrategy
+  type MoodType, type CopingStrategy
 } from '@/lib/types';
+import { getMoodCheckins } from '@/lib/checkin-service';
+import type { MoodCheckin } from '@/lib/checkin-service';
 
-// ==================== INLINE STORE ====================
-const STORAGE_KEYS = { MOOD: 'ruangkamu_mood', JOURNAL: 'ruangkamu_journal' };
-
-function getMoodEntries(): MoodEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.MOOD);
-    return data ? JSON.parse(data) : [];
-  } catch { return []; }
-}
 
 // ==================== INLINE AI HELPERS ====================
 function generateReflection(mood: MoodType, note: string): string {
@@ -301,7 +293,7 @@ function GroundingExercise() {
 
 // ==================== MAIN PAGE ====================
 export default function ReflectionPage() {
-  const [latestMood, setLatestMood] = useState<MoodEntry | null>(null);
+  const [latestMood, setLatestMood] = useState<MoodCheckin | null>(null);
   const [reflection, setReflection] = useState('');
   const [affirmation, setAffirmation] = useState('');
   const [copingStrategies, setCopingStrategies] = useState<CopingStrategy | null>(null);
@@ -310,21 +302,27 @@ export default function ReflectionPage() {
   const [reflectionRevealed, setReflectionRevealed] = useState(false);
 
   useEffect(() => {
-    const entries = getMoodEntries();
-    const latest = entries[0] || null;
-    setLatestMood(latest);
-    if (latest) {
-      setReflection(generateReflection(latest.mood, latest.note));
-      setAffirmation(generateAffirmation(latest.mood));
-      const relevantCoping = COPING_STRATEGIES.find(c => c.mood === latest.mood) || COPING_STRATEGIES[0];
-      setCopingStrategies(relevantCoping);
-    } else {
-      setAffirmation(generateAffirmation('biasa'));
-    }
-    const shuffled = [...JOURNAL_PROMPTS].sort(() => Math.random() - 0.5);
-    setJournalPrompt(shuffled[0]);
-    // Start reveal
-    setTimeout(() => setReflectionRevealed(true), 500);
+    const load = async () => {
+      const checkins = await getMoodCheckins();
+      // Sort by timestamp desc, pick the most recent
+      const sorted = [...checkins].sort((a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      const latest = sorted[0] || null;
+      setLatestMood(latest);
+      if (latest) {
+        setReflection(generateReflection(latest.mood, latest.note || ''));
+        setAffirmation(generateAffirmation(latest.mood));
+        const relevantCoping = COPING_STRATEGIES.find(c => c.mood === latest.mood) || COPING_STRATEGIES[0];
+        setCopingStrategies(relevantCoping);
+      } else {
+        setAffirmation(generateAffirmation('biasa'));
+      }
+      const shuffled = [...JOURNAL_PROMPTS].sort(() => Math.random() - 0.5);
+      setJournalPrompt(shuffled[0]);
+      setTimeout(() => setReflectionRevealed(true), 500);
+    };
+    load();
   }, []);
 
   const refreshAffirmation = () => {
@@ -341,13 +339,14 @@ export default function ReflectionPage() {
         <div className="max-w-5xl mx-auto">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2.5 rounded-xl bg-black/5">
-                <Brain className="w-6 h-6 text-[#0a0a0a]" />
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-xl bg-[#0a0a0a] flex items-center justify-center">
+                <Brain className="w-4 h-4 text-white" />
               </div>
-              <h1 className="text-3xl font-bold text-[#0a0a0a]" style={{ fontFamily: 'var(--font-heading)' }}>Reflection & Coping</h1>
+              <span className="text-xs font-semibold text-[#9a9a9a] uppercase tracking-widest">Reflection</span>
             </div>
-            <p className="text-[#9a9a9a] ml-14">Tools to help you process, breathe, and find peace.</p>
+            <h1 className="text-3xl font-black text-[#0a0a0a] leading-tight tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>Reflection &amp; Coping</h1>
+            <p className="text-[#9a9a9a] mt-1.5 text-sm">Tools to help you process, breathe, and find peace.</p>
           </motion.div>
 
           <div className="space-y-8">

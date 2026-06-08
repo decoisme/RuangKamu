@@ -1,21 +1,16 @@
-import { getMoodEntries } from './supabase-service';
 import { getMoodCheckins, getWeeklySummaries } from './checkin-service';
-import type { MoodEntry, MoodType, TriggerType } from './types';
+import type { MoodType, TriggerType } from './types';
 import type { MoodCheckin, MoodDailySummary } from './checkin-service';
 import { format, subDays, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 
 // ===== COMBINED ANALYTICS =====
 
 export interface AnalyticsData {
-  // Legacy mood entries
-  moodEntries: MoodEntry[];
-  
-  // New check-ins
+  // New check-ins system
   checkins: MoodCheckin[];
   dailySummaries: MoodDailySummary[];
   
-  // Combined stats
-  totalEntries: number;
+  // Stats
   totalCheckins: number;
   averageScore: number;
   averageCheckinsPerDay: number;
@@ -87,54 +82,36 @@ const TRIGGER_LABELS: Record<TriggerType, string> = {
 };
 
 export async function getAnalyticsData(): Promise<AnalyticsData> {
-  // Fetch all data
-  const [moodEntries, checkins] = await Promise.all([
-    getMoodEntries(),
-    getMoodCheckins(),
-  ]);
+  // Fetch all checkins only
+  const checkins = await getMoodCheckins();
   
   // Get weekly summaries for last 4 weeks
   const fourWeeksAgo = format(subDays(new Date(), 28), 'yyyy-MM-dd');
   const dailySummaries = await getWeeklySummaries(fourWeeksAgo);
   
-  // Calculate combined stats
-  const totalEntries = moodEntries.length;
+  // Stats
   const totalCheckins = checkins.length;
+  const averageScore = totalCheckins > 0
+    ? Number((checkins.reduce((sum, c) => sum + c.score, 0) / totalCheckins).toFixed(1))
+    : 0;
   
-  // Calculate average score from both sources
-  const entriesScore = moodEntries.reduce((sum, e) => sum + e.score, 0);
-  const checkinsScore = checkins.reduce((sum, c) => sum + c.score, 0);
-  const totalScore = entriesScore + checkinsScore;
-  const totalCount = totalEntries + totalCheckins;
-  const averageScore = totalCount > 0 ? Number((totalScore / totalCount).toFixed(1)) : 0;
-  
-  // Calculate average check-ins per day
-  const uniqueDays = new Set([
-    ...checkins.map(c => c.date),
-    ...moodEntries.map(e => e.date),
-  ]).size;
+  // Average check-ins per day
+  const uniqueDays = new Set(checkins.map(c => c.date)).size;
   const averageCheckinsPerDay = uniqueDays > 0 ? Number((totalCheckins / uniqueDays).toFixed(1)) : 0;
   
-  // Weekly data (last 7 days)
+  // Weekly data (last 7 days) — from checkins only
   const weeklyData = [];
   for (let i = 6; i >= 0; i--) {
     const d = subDays(new Date(), i);
     const dateStr = format(d, 'yyyy-MM-dd');
-    
-    // Get check-ins for this day
     const dayCheckins = checkins.filter(c => c.date === dateStr);
-    const dayEntry = moodEntries.find(e => e.date === dateStr);
-    
-    // Use summary if available, otherwise calculate from check-ins
     const summary = dailySummaries.find(s => s.date === dateStr);
-    const score = summary 
-      ? summary.averageScore 
-      : dayCheckins.length > 0 
+    const score = summary
+      ? summary.averageScore
+      : dayCheckins.length > 0
         ? dayCheckins.reduce((sum, c) => sum + c.score, 0) / dayCheckins.length
-        : dayEntry?.score || 0;
-    
-    const mood = summary?.dominantMood || dayCheckins[0]?.mood || dayEntry?.mood || 'biasa';
-    
+        : 0;
+    const mood = summary?.dominantMood || dayCheckins[0]?.mood || 'biasa';
     weeklyData.push({
       day: format(d, 'EEE'),
       score: Number(score.toFixed(1)),
@@ -168,14 +145,9 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     });
   }
   
-  // Mood distribution (from all sources)
+  // Mood distribution (from checkins only)
   const moodCounts: Record<string, number> = {};
-  moodEntries.forEach(e => {
-    moodCounts[e.mood] = (moodCounts[e.mood] || 0) + 1;
-  });
-  checkins.forEach(c => {
-    moodCounts[c.mood] = (moodCounts[c.mood] || 0) + 1;
-  });
+  checkins.forEach(c => { moodCounts[c.mood] = (moodCounts[c.mood] || 0) + 1; });
   
   const moodDistribution = Object.entries(MOOD_LABELS)
     .map(([mood, info]) => ({
@@ -187,17 +159,10 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value);
   
-  // Trigger distribution
+  // Trigger distribution (from checkins only)
   const triggerCounts: Record<string, number> = {};
-  moodEntries.forEach(e => {
-    e.triggers.forEach(t => {
-      triggerCounts[t] = (triggerCounts[t] || 0) + 1;
-    });
-  });
   checkins.forEach(c => {
-    c.triggers.forEach(t => {
-      triggerCounts[t] = (triggerCounts[t] || 0) + 1;
-    });
+    c.triggers.forEach(t => { triggerCounts[t] = (triggerCounts[t] || 0) + 1; });
   });
   
   const triggerDistribution = Object.entries(TRIGGER_LABELS)
@@ -229,10 +194,8 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
   });
   
   return {
-    moodEntries,
     checkins,
     dailySummaries,
-    totalEntries,
     totalCheckins,
     averageScore,
     averageCheckinsPerDay,

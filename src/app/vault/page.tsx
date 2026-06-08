@@ -235,11 +235,14 @@ export default function VaultPage() {
         <div className="max-w-3xl mx-auto">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 text-center pt-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-black/5 mb-4">
-              {unlocked ? <Unlock size={28} className="text-[#0a0a0a]" /> : <Lock size={28} className="text-[#0a0a0a]" />}
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#0a0a0a] mb-4 shadow-lg">
+              {unlocked ? <Unlock size={22} className="text-white" /> : <Lock size={22} className="text-white" />}
             </div>
-            <h1 className="font-heading font-bold text-3xl text-[#0a0a0a] mb-2">Private Vault</h1>
-            <p className="text-[#9a9a9a]">Your most personal thoughts, locked away safely.</p>
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <span className="text-xs font-semibold text-[#9a9a9a] uppercase tracking-widest">Private Vault</span>
+            </div>
+            <h1 className="font-black text-3xl text-[#0a0a0a] leading-tight tracking-tight mb-2">Ruang Pribadi</h1>
+            <p className="text-[#9a9a9a] text-sm">Your most personal thoughts, locked away safely.</p>
           </motion.div>
 
           {/* PIN SETUP / ENTRY / UNLOCKED */}
