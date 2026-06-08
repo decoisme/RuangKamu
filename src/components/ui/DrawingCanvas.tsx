@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Palette, Eraser, Trash2, Download, Sparkles, 
-  RotateCcw, Check, Loader2, Image as ImageIcon
+import {
+  Palette, Eraser, Trash2, Download, Sparkles,
+  Check, Loader2, Image as ImageIcon, Minus, Pen,
+  RefreshCw
 } from "lucide-react";
 
 interface DrawingCanvasProps {
@@ -13,47 +14,381 @@ interface DrawingCanvasProps {
 }
 
 const COLORS = [
-  { name: "Black", value: "#0a0a0a" },
-  { name: "Red", value: "#FF6B6B" },
-  { name: "Orange", value: "#FF8C6B" },
-  { name: "Yellow", value: "#FFD93D" },
-  { name: "Green", value: "#7DA87B" },
-  { name: "Blue", value: "#6B9BD2" },
-  { name: "Purple", value: "#8B7EC8" },
-  { name: "Pink", value: "#FF6B9D" },
+  { name: "Midnight",  value: "#0a0a0a" },
+  { name: "Crimson",   value: "#E05C5C" },
+  { name: "Amber",     value: "#F59E0B" },
+  { name: "Sunshine",  value: "#FCD34D" },
+  { name: "Sage",      value: "#6DAF7A" },
+  { name: "Sky",       value: "#60A5FA" },
+  { name: "Lavender",  value: "#8B7EC8" },
+  { name: "Rose",      value: "#F472B6" },
+  { name: "Slate",     value: "#94A3B8" },
+  { name: "Warm Gray", value: "#D6D3D1" },
 ];
 
-const BRUSH_SIZES = [2, 4, 8, 12, 16];
+const BRUSH_SIZES = [
+  { size: 2,  label: "Fine"   },
+  { size: 5,  label: "Medium" },
+  { size: 10, label: "Bold"   },
+  { size: 18, label: "Broad"  },
+];
 
+// ==================== PIXEL ANALYSIS ENGINE ====================
+interface DrawingStats {
+  dominantColors: Array<{ name: string; value: string; proportion: number }>;
+  coverage: number;            // 0–1
+  strokeComplexity: number;    // 0–1 (entropy proxy)
+  verticalBias: "top" | "center" | "bottom" | "spread";
+  horizontalBias: "left" | "center" | "right" | "spread";
+  colorVariety: number;        // 0–1
+  darknessBias: "dark" | "neutral" | "light";
+}
+
+function analyzeCanvas(canvas: HTMLCanvasElement): DrawingStats {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return {} as DrawingStats;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const pixels = imgData.data;
+
+  // Count non-white pixels in a grid
+  const colorBuckets: Record<string, number> = {};
+  let totalNonWhite = 0;
+
+  // Spatial tracking (divide into 3×3 grid)
+  const gridW = Math.floor(w / 3);
+  const gridH = Math.floor(h / 3);
+  const spatialGrid: number[][] = Array.from({ length: 3 }, () => [0, 0, 0]);
+
+  // Track darkness
+  let totalBrightness = 0;
+  let brightnessSamples = 0;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = pixels[i];
+      const g = pixels[i + 1];
+      const b = pixels[i + 2];
+
+      if (r > 238 && g > 238 && b > 238) continue; // skip near-white
+
+      totalNonWhite++;
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      totalBrightness += brightness;
+      brightnessSamples++;
+
+      // Spatial bucket
+      const gx = Math.min(2, Math.floor(x / gridW));
+      const gy = Math.min(2, Math.floor(y / gridH));
+      spatialGrid[gy][gx]++;
+
+      // Color categorization
+      const key = categorizeColor(r, g, b);
+      colorBuckets[key] = (colorBuckets[key] || 0) + 1;
+    }
+  }
+
+  const totalPixels = (w * h) / 4; // device ratio adjusted approx
+  const coverage = Math.min(1, totalNonWhite / (totalPixels * 0.85));
+
+  // Dominant colors (map to COLORS palette)
+  const sortedColors = Object.entries(colorBuckets)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
+  const colorNames: Record<string, { name: string; value: string }> = {
+    black:   { name: "black",   value: "#0a0a0a" },
+    red:     { name: "red",     value: "#E05C5C" },
+    orange:  { name: "orange",  value: "#F59E0B" },
+    yellow:  { name: "yellow",  value: "#FCD34D" },
+    green:   { name: "green",   value: "#6DAF7A" },
+    blue:    { name: "blue",    value: "#60A5FA" },
+    purple:  { name: "purple",  value: "#8B7EC8" },
+    pink:    { name: "pink",    value: "#F472B6" },
+    gray:    { name: "gray",    value: "#94A3B8" },
+    dark:    { name: "dark",    value: "#334155" },
+  };
+
+  const dominantColors = sortedColors.map(([key, count]) => ({
+    name: colorNames[key]?.name || key,
+    value: colorNames[key]?.value || "#9a9a9a",
+    proportion: count / totalNonWhite,
+  }));
+
+  // Spatial bias
+  const topSum = spatialGrid[0].reduce((a, b) => a + b, 0);
+  const midRowSum = spatialGrid[1].reduce((a, b) => a + b, 0);
+  const botSum = spatialGrid[2].reduce((a, b) => a + b, 0);
+
+  const leftSum = spatialGrid.reduce((s, row) => s + row[0], 0);
+  const centerColSum = spatialGrid.reduce((s, row) => s + row[1], 0);
+  const rightSum = spatialGrid.reduce((s, row) => s + row[2], 0);
+
+  const rowMax = Math.max(topSum, midRowSum, botSum);
+  const colMax = Math.max(leftSum, centerColSum, rightSum);
+  const rowSpread = Math.min(topSum, midRowSum, botSum) / (rowMax || 1) > 0.35;
+  const colSpread = Math.min(leftSum, centerColSum, rightSum) / (colMax || 1) > 0.35;
+
+  const verticalBias: DrawingStats["verticalBias"] =
+    rowSpread ? "spread"
+    : rowMax === topSum ? "top"
+    : rowMax === botSum ? "bottom"
+    : "center";
+
+  const horizontalBias: DrawingStats["horizontalBias"] =
+    colSpread ? "spread"
+    : colMax === leftSum ? "left"
+    : colMax === rightSum ? "right"
+    : "center";
+
+  // Color variety
+  const colorVariety = Math.min(1, Object.keys(colorBuckets).length / 7);
+
+  // Darkness bias
+  const avgBrightness = brightnessSamples > 0 ? totalBrightness / brightnessSamples : 128;
+  const darknessBias: DrawingStats["darknessBias"] =
+    avgBrightness < 80 ? "dark" : avgBrightness > 180 ? "light" : "neutral";
+
+  // Stroke complexity: rough estimate via color transition changes
+  const strokeComplexity = Math.min(1, colorVariety * 0.5 + (coverage > 0.3 ? 0.3 : coverage));
+
+  return {
+    dominantColors,
+    coverage,
+    strokeComplexity,
+    verticalBias,
+    horizontalBias,
+    colorVariety,
+    darknessBias,
+  };
+}
+
+function categorizeColor(r: number, g: number, b: number): string {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+
+  if (l < 60) return "black";
+  if (l < 100 && max - min < 40) return "dark";
+  if (max - min < 30) return "gray";
+
+  const h = max === r
+    ? ((g - b) / (max - min)) % 6
+    : max === g
+    ? (b - r) / (max - min) + 2
+    : (r - g) / (max - min) + 4;
+  const hDeg = (h * 60 + 360) % 360;
+
+  if (hDeg < 20 || hDeg >= 340) return "red";
+  if (hDeg < 45)  return "orange";
+  if (hDeg < 70)  return "yellow";
+  if (hDeg < 160) return "green";
+  if (hDeg < 240) return "blue";
+  if (hDeg < 280) return "purple";
+  return "pink";
+}
+
+// ==================== INTERPRETATION ENGINE ====================
+function buildRichInterpretation(stats: DrawingStats): string {
+  const { dominantColors, coverage, strokeComplexity, verticalBias, horizontalBias, colorVariety, darknessBias } = stats;
+
+  const mainColor = dominantColors[0];
+  const secondColor = dominantColors[1];
+
+  // ── COLOR MEANINGS ──
+  const colorNarratives: Record<string, string[]> = {
+    black: [
+      "The deep, grounding darkness of your strokes speaks of honesty — you're not looking away from something heavy.",
+      "Black carries depth. There's weight here, but weight isn't weakness; it's gravity, it's truth.",
+      "Your choice of darkness may reflect a quiet turning inward — a search for clarity beneath the noise.",
+    ],
+    dark: [
+      "These shadowy tones hold something unspoken — emotions that haven't found words yet.",
+      "Dark hues often carry stories we're still trying to understand ourselves.",
+    ],
+    red: [
+      "Red pulses through this piece — something alive and urgent moves in you right now.",
+      "There's fire here. Whether that's passion, frustration, or fierce love, it demands to be felt.",
+      "Red is the body's color — heartbeat, urgency, aliveness. You're fully present in whatever this is.",
+    ],
+    orange: [
+      "Orange sits between fire and warmth — you might be processing something restless, something becoming.",
+      "There's an aliveness in this orange, like a late afternoon sky. Energetic, searching.",
+      "Orange carries creative restlessness — ideas and feelings looking for form.",
+    ],
+    yellow: [
+      "Yellow reaches toward light, even when it's hard to find. There's hope coded into this color.",
+      "Like sunlight through leaves, your yellows suggest a part of you still reaching upward.",
+      "Brightness lives here — maybe tentative, maybe defiant, but reaching.",
+    ],
+    green: [
+      "Green speaks of healing, of wanting to grow through rather than around something.",
+      "There's something restorative in these greens — a need for calm, for ground beneath your feet.",
+      "Like new growth after rain, your greens carry the possibility of renewal.",
+    ],
+    blue: [
+      "Blue is the color of deep water and open sky — contemplation, longing, or a need for peace.",
+      "Your blues suggest you're thinking deeply, perhaps sitting with something rather than rushing through it.",
+      "Blue holds both sadness and serenity. There's depth here worth acknowledging.",
+    ],
+    purple: [
+      "Purple lives at the edge of feeling and meaning — you may be processing something layered, something transformative.",
+      "These purples suggest emotional complexity, the kind that doesn't resolve quickly but grows into something rich.",
+      "Like dusk, your purples carry transition — between one state of being and another.",
+    ],
+    pink: [
+      "Pink holds vulnerability and tenderness — emotions that are soft but no less real.",
+      "Your use of pink speaks to gentleness, perhaps toward yourself or someone you care about.",
+      "There's something sweet and honest in these pinks — an openness to feeling.",
+    ],
+    gray: [
+      "Gray carries ambiguity — neither here nor there. You may be in the middle of something, not yet resolved.",
+      "These neutral tones suggest you're holding space for uncertainty, which is its own kind of wisdom.",
+      "Gray is the color of fog and early morning — things not yet clear but present.",
+    ],
+  };
+
+  // ── COVERAGE NARRATIVES ──
+  const coverageNarratives = {
+    full: [
+      "You've filled the space completely — whatever you're feeling takes up a lot of room right now, and that's okay.",
+      "The fullness of this drawing suggests these emotions are significant, worth taking seriously.",
+      "You didn't hold back. There's courage in letting it all out, even on a canvas.",
+    ],
+    moderate: [
+      "You've given yourself space to breathe within the drawing — engaging deeply without being consumed.",
+      "The balance here suggests you're processing with intention — holding the feeling, not drowning in it.",
+      "There's thoughtfulness in how you've filled this space — measured, present, aware.",
+    ],
+    minimal: [
+      "The quiet marks you've left carry weight despite their smallness — sometimes restraint holds everything.",
+      "A few careful strokes can say what paragraphs can't. You're choosing what matters.",
+      "This sparseness might mean you're still approaching something, still finding words for it. That's okay.",
+    ],
+  };
+
+  // ── SPATIAL NARRATIVES ──
+  const spatialLines: Record<string, string> = {
+    top:    "Your marks gather at the top — reaching, aspiring, or perhaps trying to get above something.",
+    bottom: "You've anchored toward the base — grounded, but perhaps weighed down too.",
+    center: "You've drawn inward, toward center — this feels personal, close to the chest.",
+    spread: "Your expression spreads across the whole canvas — these feelings don't fit neatly in one place.",
+    left:   "The left side carries more energy — beginnings, the past, or things not yet resolved.",
+    right:  "You've moved toward the right — forward motion, what's coming, anticipation.",
+  };
+
+  // ── COLOR VARIETY ──
+  const varietyLines: Record<string, string> = {
+    rich:    "The range of colors you've used reflects emotional complexity — you're holding many things at once.",
+    moderate:"A few colors work together here, suggesting layers you're sorting through.",
+    simple:  "You've kept to one or two tones — focused, perhaps, or deliberately contained.",
+  };
+
+  const varietyKey = colorVariety > 0.6 ? "rich" : colorVariety > 0.3 ? "moderate" : "simple";
+
+  // ── REFLECTIVE QUESTIONS ──
+  const reflectiveQuestions = [
+    "What does this drawing mean to you — not what it looks like, but what it *feels* like?",
+    "If this drawing could speak, what would it say first?",
+    "Where in your body do you feel what this drawing expresses?",
+    "Is there something in this drawing you haven't let yourself say out loud yet?",
+    "What would change if you looked at this drawing a year from now?",
+    "What part of this drawing feels most true to where you are right now?",
+    "What would you draw differently if you were feeling the opposite of this?",
+  ];
+
+  // ── AFFIRMATIONS ──
+  const affirmations = [
+    "Your feelings are real and worthy of space — in art, in words, in the world.",
+    "Thank you for showing up for yourself today, in whatever form that takes. ♥",
+    "Expression is brave work. You're doing it.",
+    "There's no wrong way to feel. This drawing is proof you're paying attention.",
+    "You are allowed to feel all of this — and more.",
+    "Art is how we say what language can't hold. You're speaking.",
+  ];
+
+  // ── BUILD OUTPUT ──
+  const lines: string[] = [];
+
+  // Opening color reading
+  if (mainColor) {
+    const colorKey = mainColor.name in colorNarratives ? mainColor.name : "gray";
+    const options = colorNarratives[colorKey] || colorNarratives["gray"];
+    lines.push(options[Math.floor(Math.random() * options.length)]);
+  }
+
+  // Secondary color nuance
+  if (secondColor && secondColor.proportion > 0.12) {
+    const secKey = secondColor.name in colorNarratives ? secondColor.name : "gray";
+    const secOptions = colorNarratives[secKey] || [];
+    if (secOptions.length > 0) {
+      const secLine = secOptions[Math.floor(Math.random() * secOptions.length)];
+      lines.push(`Underneath that, ${secLine.charAt(0).toLowerCase() + secLine.slice(1)}`);
+    }
+  }
+
+  // Color variety
+  lines.push(varietyLines[varietyKey]);
+
+  // Spatial reading
+  const spatialKey = [verticalBias, horizontalBias]
+    .filter(v => v !== "spread" && v !== "center")
+    .find(Boolean) || verticalBias;
+  if (spatialLines[spatialKey]) {
+    lines.push(spatialLines[spatialKey]);
+  }
+
+  // Coverage
+  const coverageKey = coverage > 0.35 ? "full" : coverage > 0.12 ? "moderate" : "minimal";
+  const coverageOptions = coverageNarratives[coverageKey];
+  lines.push(coverageOptions[Math.floor(Math.random() * coverageOptions.length)]);
+
+  // Darkness note (if noteworthy)
+  if (darknessBias === "dark") {
+    lines.push("The darkness you've chosen isn't absence — it's honesty.");
+  } else if (darknessBias === "light") {
+    lines.push("The lightness here has its own kind of courage — choosing brightness even when things are heavy.");
+  }
+
+  // Reflective question
+  lines.push("\n" + reflectiveQuestions[Math.floor(Math.random() * reflectiveQuestions.length)]);
+
+  // Affirmation
+  lines.push(affirmations[Math.floor(Math.random() * affirmations.length)]);
+
+  return lines.join("\n\n");
+}
+
+// ==================== COMPONENT ====================
 export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState("#0a0a0a");
-  const [brushSize, setBrushSize] = useState(4);
+  const [brushSize, setBrushSize] = useState(5);
   const [isEraser, setIsEraser] = useState(false);
   const [aiInterpretation, setAiInterpretation] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showInterpretation, setShowInterpretation] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
+  const lastPos = useRef<{ x: number; y: number } | null>(null);
 
+  // ── Canvas Init ──
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Set canvas size
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * window.devicePixelRatio;
     canvas.height = rect.height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-
-    // White background
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, rect.width, rect.height);
 
-    // Load initial image if exists
     if (initialImage) {
       const img = new Image();
       img.onload = () => {
@@ -64,56 +399,58 @@ export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
     }
   }, [initialImage]);
 
+  // ── Drawing helpers ──
+  const getPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const pos = getPos(e);
+    lastPos.current = pos;
     setIsDrawing(true);
     setHasDrawn(true);
 
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
     ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = brushSize;
-    ctx.strokeStyle = isEraser ? "#ffffff" : color;
+    ctx.arc(pos.x, pos.y, (isEraser ? brushSize * 2 : brushSize) / 2, 0, Math.PI * 2);
+    ctx.fillStyle = isEraser ? "#ffffff" : color;
+    ctx.fill();
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-
+    if (!isDrawing || !lastPos.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    ctx.lineTo(x, y);
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = isEraser ? brushSize * 2.5 : brushSize;
+    ctx.strokeStyle = isEraser ? "#ffffff" : color;
     ctx.stroke();
+    lastPos.current = pos;
   };
 
   const stopDrawing = () => {
     setIsDrawing(false);
+    lastPos.current = null;
   };
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     const rect = canvas.getBoundingClientRect();
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, rect.width, rect.height);
@@ -125,413 +462,275 @@ export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
   const downloadImage = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const link = document.createElement("a");
-    link.download = `journal-drawing-${Date.now()}.png`;
+    link.download = `visual-journal-${Date.now()}.png`;
     link.href = canvas.toDataURL();
     link.click();
   };
 
+  // ── AI Analysis ──
   const analyzeDrawing = async () => {
     const canvas = canvasRef.current;
     if (!canvas || !hasDrawn) return;
-
     setIsAnalyzing(true);
     setShowInterpretation(false);
 
-    // Simulate AI analysis (replace with actual API call)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Simulate thinking time (real API would go here)
+    await new Promise(r => setTimeout(r, 2200));
 
-    // Mock AI interpretation based on colors and complexity
-    const imageData = canvas.toDataURL();
-    const mockInterpretation = generateMockInterpretation(imageData);
-    
-    setAiInterpretation(mockInterpretation);
+    const stats = analyzeCanvas(canvas);
+    const interpretation = buildRichInterpretation(stats);
+
+    setAiInterpretation(interpretation);
     setShowInterpretation(true);
     setIsAnalyzing(false);
-  };
-
-  const generateMockInterpretation = (imageData: string): string => {
-    // Analyze actual canvas data
-    const canvas = canvasRef.current;
-    if (!canvas) return "Unable to analyze the drawing.";
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return "Unable to analyze the drawing.";
-
-    // Get image data for analysis
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imgData.data;
-
-    // Analyze colors used
-    const colorCounts: Record<string, number> = {};
-    let totalNonWhite = 0;
-
-    for (let i = 0; i < pixels.length; i += 4) {
-      const r = pixels[i];
-      const g = pixels[i + 1];
-      const b = pixels[i + 2];
-      
-      // Skip white/near-white pixels
-      if (r > 240 && g > 240 && b > 240) continue;
-      
-      totalNonWhite++;
-      
-      // Categorize colors
-      const colorKey = getColorCategory(r, g, b);
-      colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
-    }
-
-    // Determine dominant colors
-    const sortedColors = Object.entries(colorCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
-
-    // Calculate coverage
-    const coverage = totalNonWhite / (canvas.width * canvas.height);
-    const coverageLevel = coverage > 0.4 ? "full" : coverage > 0.2 ? "moderate" : "minimal";
-
-    // Build interpretation
-    return buildInterpretation(sortedColors, coverageLevel);
-  };
-
-  const getColorCategory = (r: number, g: number, b: number): string => {
-    // Determine color family
-    if (r > 200 && g < 100 && b < 100) return "red";
-    if (r > 200 && g > 150 && b < 100) return "orange";
-    if (r > 200 && g > 200 && b < 100) return "yellow";
-    if (g > 150 && r < 150 && b < 150) return "green";
-    if (b > 150 && r < 150 && g < 150) return "blue";
-    if (r > 150 && b > 150 && g < 150) return "purple";
-    if (r > 180 && g < 150 && b > 150) return "pink";
-    if (r < 100 && g < 100 && b < 100) return "black";
-    return "gray";
-  };
-
-  const buildInterpretation = (
-    dominantColors: [string, number][],
-    coverage: "full" | "moderate" | "minimal"
-  ): string => {
-    const colorMeanings: Record<string, string[]> = {
-      red: [
-        "The red tones suggest intensity - perhaps passion, anger, or strong determination.",
-        "Red appears prominently, indicating powerful emotions you're experiencing.",
-        "Your use of red shows energy and urgency in what you're feeling."
-      ],
-      orange: [
-        "Orange hues suggest warmth and enthusiasm, though perhaps tinged with restlessness.",
-        "The orange tones show creative energy seeking expression.",
-        "Orange indicates a mix of passion and optimism in your current state."
-      ],
-      yellow: [
-        "Yellow suggests hope and brightness, even if things feel challenging.",
-        "The yellow tones show you're seeking light and clarity.",
-        "Your use of yellow indicates optimism trying to break through."
-      ],
-      green: [
-        "Green suggests a need for balance, growth, or healing.",
-        "The green tones show you're in a process of renewal or seeking peace.",
-        "Green indicates you're grounding yourself or seeking stability."
-      ],
-      blue: [
-        "Blue suggests calm, contemplation, or perhaps sadness that needs acknowledgment.",
-        "The blue tones show introspection - you're thinking deeply about something.",
-        "Your use of blue indicates a need for peace or emotional release."
-      ],
-      purple: [
-        "Purple suggests deep emotions, spirituality, or creative processing.",
-        "The purple tones show you're exploring complex feelings.",
-        "Purple indicates you're in a transformative emotional space."
-      ],
-      pink: [
-        "Pink suggests gentleness, love, or vulnerable emotions.",
-        "The pink tones show tenderness - either toward yourself or others.",
-        "Your use of pink indicates soft, caring emotions at play."
-      ],
-      black: [
-        "Black suggests depth, perhaps heaviness, but also strength and grounding.",
-        "The dark tones show you're processing something weighty.",
-        "Black indicates you're facing something difficult but with honesty."
-      ],
-      gray: [
-        "Gray tones suggest ambiguity or neutral processing of emotions.",
-        "The muted colors show you might feel uncertain or in transition.",
-        "Gray indicates you're in a liminal space, which is okay."
-      ]
-    };
-
-    const coverageMeanings = {
-      full: [
-        "Your drawing fills the space, suggesting these feelings are taking up a lot of room in your mind right now.",
-        "The fullness of your drawing shows these emotions are consuming significant mental and emotional energy.",
-        "You've used the entire canvas - these feelings are big and deserve attention."
-      ],
-      moderate: [
-        "Your drawing occupies a comfortable amount of space, suggesting balanced emotional processing.",
-        "The moderate coverage shows you're engaging with your feelings without being overwhelmed.",
-        "You're giving these emotions appropriate space - not minimizing, not drowning."
-      ],
-      minimal: [
-        "Your sparse drawing might suggest holding back, or perhaps these feelings are just emerging.",
-        "The minimal coverage could mean you're being gentle with yourself, taking things slowly.",
-        "Less can be more - sometimes the smallest marks carry the deepest meaning."
-      ]
-    };
-
-    const questionPrompts = [
-      "What does this drawing mean to you?",
-      "What feelings were you trying to express?",
-      "Is there something specific this represents?",
-      "What would you tell a friend who drew this?",
-      "What part of the drawing feels most true?"
-    ];
-
-    const supportiveClosings = [
-      "Remember, all feelings are valid. You're doing brave work by expressing them {'<3'}",
-      "Thank you for sharing this with yourself. That takes courage :)",
-      "Your feelings deserve to be seen and heard, even in abstract form.",
-      "This is your truth right now, and that's enough {'<3'}",
-      "Keep expressing yourself - words, art, or both. You're worth it :)"
-    ];
-
-    // Build the interpretation
-    let interpretation = "";
-
-    // Opening based on dominant color
-    if (dominantColors.length > 0) {
-      const mainColor = dominantColors[0][0];
-      const colorMessage = colorMeanings[mainColor]?.[
-        Math.floor(Math.random() * colorMeanings[mainColor].length)
-      ] || "Your color choices are meaningful.";
-      interpretation += colorMessage + " ";
-    }
-
-    // Multiple colors = complexity
-    if (dominantColors.length >= 2) {
-      const secondColor = dominantColors[1][0];
-      if (secondColor && colorMeanings[secondColor]) {
-        interpretation += `The presence of ${secondColor} alongside this adds complexity - you might be experiencing multiple emotions at once, which is completely natural. `;
-      }
-    }
-
-    // Coverage meaning
-    const coverageMessage = coverageMeanings[coverage][
-      Math.floor(Math.random() * coverageMeanings[coverage].length)
-    ];
-    interpretation += coverageMessage + " ";
-
-    // Reflective question
-    const question = questionPrompts[Math.floor(Math.random() * questionPrompts.length)];
-    interpretation += "\n\n" + question + " ";
-
-    // Supportive closing
-    const closing = supportiveClosings[Math.floor(Math.random() * supportiveClosings.length)];
-    interpretation += closing;
-
-    return interpretation;
   };
 
   const handleSave = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const imageData = canvas.toDataURL();
     onSave?.(imageData, aiInterpretation);
   };
 
   return (
-    <div className="glass-card rounded-2xl p-6 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="glass-card rounded-2xl overflow-hidden">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-black/[0.06]">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-gradient-to-br from-[#FF6B9D]/20 to-[#8B7EC8]/20">
-            <Palette className="w-5 h-5 text-[#8B7EC8]" />
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F472B6]/20 to-[#8B7EC8]/20 flex items-center justify-center">
+            <Palette className="w-4 h-4 text-[#8B7EC8]" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-[#0a0a0a]">Visual Journal</h3>
-            <p className="text-xs text-[#9a9a9a]">Draw how you feel :)</p>
+            <h3 className="text-sm font-bold text-[#0a0a0a]">Visual Journal</h3>
+            <p className="text-[11px] text-[#9a9a9a]">Draw what words can't say</p>
           </div>
         </div>
 
-        {hasDrawn && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={analyzeDrawing}
-            disabled={isAnalyzing}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#8B7EC8] to-[#6B9BD2] text-white text-sm font-semibold disabled:opacity-50 shadow-lg shadow-[#8B7EC8]/25"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                AI Interpret
-              </>
-            )}
-          </motion.button>
-        )}
+        <div className="flex items-center gap-2">
+          {hasDrawn && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={analyzeDrawing}
+              disabled={isAnalyzing}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#8B7EC8] to-[#6B9BD2] text-white text-xs font-semibold disabled:opacity-60 shadow-md shadow-[#8B7EC8]/20"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Reading...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {showInterpretation ? "Re-read" : "AI Read"}
+                </>
+              )}
+            </motion.button>
+          )}
+        </div>
       </div>
 
-      {/* Canvas */}
-      <div className="relative">
+      {/* ── Canvas ── */}
+      <div className="relative bg-white mx-4 my-3 rounded-xl overflow-hidden border border-black/[0.06]">
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
           onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
-          className="w-full h-80 border-2 border-black/[0.08] rounded-xl cursor-crosshair bg-white"
+          className="w-full h-72 cursor-crosshair block"
           style={{ touchAction: "none" }}
         />
-        
         {!hasDrawn && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center">
-              <ImageIcon className="w-12 h-12 text-[#9a9a9a]/30 mx-auto mb-2" />
-              <p className="text-sm text-[#9a9a9a]/60">Start drawing to express yourself</p>
+              <ImageIcon className="w-10 h-10 text-[#9a9a9a]/25 mx-auto mb-2" />
+              <p className="text-xs text-[#9a9a9a]/50">Pick a color and draw freely</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Tools */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* ── Toolbar ── */}
+      <div className="px-4 pb-4 space-y-3">
         {/* Colors */}
-        <div className="flex items-center gap-2">
-          {COLORS.map((c) => (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {COLORS.map(c => (
             <motion.button
               key={c.value}
-              whileHover={{ scale: 1.1 }}
+              whileHover={{ scale: 1.15 }}
               whileTap={{ scale: 0.9 }}
-              onClick={() => {
-                setColor(c.value);
-                setIsEraser(false);
-              }}
-              className="w-7 h-7 rounded-full border-2 transition-all"
+              onClick={() => { setColor(c.value); setIsEraser(false); }}
+              className="w-6 h-6 rounded-full border-2 transition-all"
               style={{
                 background: c.value,
                 borderColor: color === c.value && !isEraser ? "#0a0a0a" : "transparent",
-                boxShadow: color === c.value && !isEraser ? "0 0 0 2px #0a0a0a20" : "none",
+                outline: color === c.value && !isEraser ? "2px solid #0a0a0a20" : "none",
+                outlineOffset: "1px",
               }}
               title={c.name}
             />
           ))}
         </div>
 
-        <div className="w-px h-6 bg-black/[0.08]" />
+        {/* Brush + Tools */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Brush sizes */}
+          <div className="flex items-center gap-1 bg-black/[0.04] rounded-lg p-1">
+            {BRUSH_SIZES.map(b => (
+              <button
+                key={b.size}
+                onClick={() => { setBrushSize(b.size); setIsEraser(false); }}
+                className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
+                  brushSize === b.size && !isEraser
+                    ? "bg-white shadow-sm text-[#0a0a0a]"
+                    : "text-[#9a9a9a] hover:text-[#555555]"
+                }`}
+                title={b.label}
+              >
+                <div
+                  className="rounded-full"
+                  style={{
+                    width: Math.min(b.size, 14),
+                    height: Math.min(b.size, 14),
+                    background: brushSize === b.size && !isEraser ? color : "#9a9a9a",
+                  }}
+                />
+              </button>
+            ))}
+          </div>
 
-        {/* Brush Sizes */}
-        <div className="flex items-center gap-1">
-          {BRUSH_SIZES.map((size) => (
-            <motion.button
-              key={size}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => {
-                setBrushSize(size);
-                setIsEraser(false);
-              }}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-              style={{
-                background: brushSize === size && !isEraser ? "rgba(0,0,0,0.08)" : "transparent",
-              }}
-              title={`${size}px`}
-            >
-              <div
-                className="rounded-full bg-[#0a0a0a]"
-                style={{ width: size, height: size }}
-              />
-            </motion.button>
-          ))}
-        </div>
+          {/* Eraser */}
+          <button
+            onClick={() => setIsEraser(!isEraser)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              isEraser
+                ? "bg-[#0a0a0a] text-white"
+                : "bg-black/[0.04] text-[#9a9a9a] hover:text-[#555555]"
+            }`}
+          >
+            <Eraser className="w-3.5 h-3.5" />
+            Erase
+          </button>
 
-        <div className="w-px h-6 bg-black/[0.08]" />
+          <div className="flex-1" />
 
-        {/* Eraser */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setIsEraser(!isEraser)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-            isEraser ? "bg-black/8 text-[#0a0a0a]" : "text-[#9a9a9a] hover:bg-black/4"
-          }`}
-        >
-          <Eraser className="w-4 h-4" />
-          <span className="text-xs font-medium">Eraser</span>
-        </motion.button>
-
-        <div className="flex-1" />
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          {/* Actions */}
+          <button
             onClick={clearCanvas}
-            className="p-2 rounded-lg text-[#9a9a9a] hover:text-red-500 hover:bg-red-50 transition-colors"
-            title="Clear"
+            disabled={!hasDrawn}
+            className="p-2 rounded-lg text-[#9a9a9a] hover:text-red-400 hover:bg-red-50 transition-all disabled:opacity-30"
+            title="Clear canvas"
           >
             <Trash2 className="w-4 h-4" />
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          </button>
+          <button
             onClick={downloadImage}
             disabled={!hasDrawn}
-            className="p-2 rounded-lg text-[#9a9a9a] hover:text-[#0a0a0a] hover:bg-black/5 transition-colors disabled:opacity-30"
+            className="p-2 rounded-lg text-[#9a9a9a] hover:text-[#0a0a0a] hover:bg-black/5 transition-all disabled:opacity-30"
             title="Download"
           >
             <Download className="w-4 h-4" />
-          </motion.button>
-
+          </button>
           {onSave && (
             <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
               onClick={handleSave}
               disabled={!hasDrawn}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0a0a0a] text-white text-sm font-medium disabled:opacity-30"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0a0a0a] text-white text-xs font-semibold disabled:opacity-30 transition-all"
             >
-              <Check className="w-4 h-4" />
-              Save Drawing
+              <Check className="w-3.5 h-3.5" />
+              Use Drawing
             </motion.button>
           )}
         </div>
       </div>
 
-      {/* AI Interpretation */}
+      {/* ── AI Interpretation ── */}
       <AnimatePresence>
-        {showInterpretation && aiInterpretation && (
+        {isAnalyzing && (
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-5 rounded-xl bg-gradient-to-r from-[#8B7EC8]/10 to-[#6B9BD2]/10 border border-[#8B7EC8]/30"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mx-4 mb-4 overflow-hidden"
           >
-            <div className="flex items-start gap-3">
-              <motion.div
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="p-2 rounded-lg bg-[#8B7EC8]/20 flex-shrink-0"
-              >
-                <Sparkles className="w-5 h-5 text-[#8B7EC8]" />
-              </motion.div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-[#0a0a0a] mb-2">
-                  AI Interpretation
-                </h4>
-                <p className="text-sm text-[#555555] leading-relaxed">
-                  {aiInterpretation}
-                </p>
-                <p className="text-xs text-[#9a9a9a] mt-3 italic">
-                  💡 This is an interpretation based on visual patterns. Your feelings are valid regardless of AI analysis {'<3'}
+            <div className="p-5 rounded-xl bg-gradient-to-r from-[#8B7EC8]/6 to-[#6B9BD2]/6 border border-[#8B7EC8]/15 flex items-center gap-4">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#8B7EC8]/20 to-[#6B9BD2]/20 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-[#8B7EC8] animate-spin" />
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#0a0a0a]">Reading your drawing...</p>
+                <p className="text-xs text-[#9a9a9a] mt-0.5">Analyzing colors, patterns & emotional signals</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {showInterpretation && aiInterpretation && !isAnalyzing && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mx-4 mb-4"
+          >
+            <div className="rounded-xl border border-[#8B7EC8]/20 overflow-hidden">
+              {/* Header */}
+              <div className="px-4 py-3 bg-gradient-to-r from-[#8B7EC8]/10 to-[#6B9BD2]/8 flex items-center gap-2 border-b border-[#8B7EC8]/15">
+                <motion.div
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 0.6, delay: 0.2 }}
+                  className="w-7 h-7 rounded-lg bg-[#8B7EC8]/20 flex items-center justify-center"
+                >
+                  <Sparkles className="w-4 h-4 text-[#8B7EC8]" />
+                </motion.div>
+                <div>
+                  <h4 className="text-xs font-bold text-[#8B7EC8]">AI Reading</h4>
+                  <p className="text-[10px] text-[#9a9a9a]">Pattern & color interpretation</p>
+                </div>
+                <button
+                  onClick={() => setShowInterpretation(false)}
+                  className="ml-auto text-[#9a9a9a] hover:text-[#555555] text-xs"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-4 bg-white space-y-3">
+                {aiInterpretation.split("\n\n").map((para, i) => {
+                  const isQuestion = para.trim().startsWith("\n") || para.includes("?");
+                  const isAffirmation = i === aiInterpretation.split("\n\n").length - 1;
+                  return (
+                    <motion.p
+                      key={i}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.12 }}
+                      className={`text-sm leading-relaxed ${
+                        isAffirmation
+                          ? "text-[#8B7EC8] font-medium italic border-t border-[#8B7EC8]/15 pt-3 mt-1"
+                          : isQuestion
+                          ? "text-[#555555] font-medium bg-[#8B7EC8]/5 px-3 py-2 rounded-lg border-l-2 border-[#8B7EC8]/40"
+                          : "text-[#555555]"
+                      }`}
+                    >
+                      {para.trim()}
+                    </motion.p>
+                  );
+                })}
+              </div>
+
+              <div className="px-4 py-2.5 bg-black/[0.02] border-t border-black/[0.05]">
+                <p className="text-[10px] text-[#9a9a9a] italic">
+                  This reading is based on visual patterns — your own meaning matters most.
                 </p>
               </div>
             </div>
@@ -539,18 +738,18 @@ export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
         )}
       </AnimatePresence>
 
-      {/* Tips */}
+      {/* ── Empty Tip ── */}
       {!hasDrawn && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="p-4 rounded-xl bg-[#f8f8f8] border border-black/[0.06]"
+          transition={{ delay: 0.5 }}
+          className="mx-4 mb-4 p-3 rounded-xl bg-[#f8f8f8] border border-black/[0.05] flex items-start gap-2.5"
         >
-          <p className="text-xs text-[#555555] leading-relaxed">
-            <span className="font-semibold">💡 Tip:</span> Don't worry about making it perfect. 
-            Use colors, shapes, and lines to express what words can't capture. 
-            Abstract is beautiful :)
+          <Sparkles className="w-3.5 h-3.5 text-[#8B7EC8] flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-[#9a9a9a] leading-relaxed">
+            <span className="font-semibold text-[#555555]">Tip:</span> Abstract is powerful — shapes, colors,
+            and pressure carry meaning even without form. Draw whatever feels right.
           </p>
         </motion.div>
       )}
