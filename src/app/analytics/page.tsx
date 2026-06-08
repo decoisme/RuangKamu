@@ -3,111 +3,39 @@
 // Disable static generation for this page (uses dynamic data)
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout/Navbar';
 import { motion } from 'framer-motion';
 import {
   BarChart3, TrendingUp, Activity, Hash, Sparkles, AlertCircle, Lightbulb,
-  CheckCircle, Info, ArrowRight
+  CheckCircle, Info, ArrowRight, Clock, Target
 } from 'lucide-react';
-import { format, subDays, parseISO, startOfWeek, endOfWeek } from 'date-fns';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import {
-  MOOD_LIST, MOOD_COLORS, TRIGGER_LIST,
-  type MoodEntry, type MoodType, type MoodInsight, type TriggerType
-} from '@/lib/types';
 
-// ==================== SUPABASE INTEGRATION ====================
-import { getMoodEntries as getMoodEntriesService } from '@/lib/supabase-service';
+// ==================== NEW ANALYTICS SERVICE ====================
+import { getAnalyticsData, type AnalyticsData } from '@/lib/analytics-service';
+import type { MoodType } from '@/lib/types';
 
-async function getMoodEntries(): Promise<MoodEntry[]> {
-  return await getMoodEntriesService();
-}
-
-// ==================== INLINE ANALYTICS ====================
-function calculateAverageScore(entries: MoodEntry[]): number {
-  if (entries.length === 0) return 0;
-  return Number((entries.reduce((sum, e) => sum + e.score, 0) / entries.length).toFixed(1));
-}
-
-function getMostFrequentMood(entries: MoodEntry[]): { type: MoodType; count: number } | null {
-  if (entries.length === 0) return null;
-  const counts: Record<string, number> = {};
-  entries.forEach(e => { counts[e.mood] = (counts[e.mood] || 0) + 1; });
-  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-  return { type: top[0] as MoodType, count: top[1] };
-}
-
-function getDominantTrigger(entries: MoodEntry[]): { type: TriggerType; count: number } | null {
-  if (entries.length === 0) return null;
-  const counts: Record<string, number> = {};
-  entries.forEach(e => e.triggers.forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-  if (Object.keys(counts).length === 0) return null;
-  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-  return { type: top[0] as TriggerType, count: top[1] };
-}
-
-function getWeeklyData(entries: MoodEntry[]): { day: string; score: number; mood: MoodType; date: string }[] {
-  const days = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = subDays(new Date(), i);
-    const dateStr = format(d, 'yyyy-MM-dd');
-    const entry = entries.find(e => e.date === dateStr);
-    days.push({ day: format(d, 'EEE'), score: entry?.score || 0, mood: entry?.mood || 'biasa', date: format(d, 'MMM d') });
-  }
-  return days;
-}
-
-function getMonthlyData(entries: MoodEntry[]): { week: string; avgScore: number; entries: number }[] {
-  const weeks = [];
-  for (let i = 3; i >= 0; i--) {
-    const ws = startOfWeek(subDays(new Date(), i * 7));
-    const we = endOfWeek(subDays(new Date(), i * 7));
-    const weekEntries = entries.filter(e => { const d = parseISO(e.date); return d >= ws && d <= we; });
-    const avg = weekEntries.length > 0 ? Number((weekEntries.reduce((s, e) => s + e.score, 0) / weekEntries.length).toFixed(1)) : 0;
-    weeks.push({ week: `${format(ws, 'MMM d')}–${format(we, 'd')}`, avgScore: avg, entries: weekEntries.length });
-  }
-  return weeks;
-}
-
-function getMoodDistribution(entries: MoodEntry[]): { name: string; value: number; color: string; emoji: string }[] {
-  const counts: Record<string, number> = {};
-  entries.forEach(e => { counts[e.mood] = (counts[e.mood] || 0) + 1; });
-  return MOOD_LIST.map(m => ({ name: m.label, value: counts[m.type] || 0, color: m.color, emoji: m.emoji })).filter(d => d.value > 0);
-}
-
-function getTriggerDistribution(entries: MoodEntry[]): { name: string; value: number; type: TriggerType }[] {
-  const counts: Record<string, number> = {};
-  entries.forEach(e => e.triggers.forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-  return TRIGGER_LIST.map(t => ({ name: t.label, value: counts[t.type] || 0, type: t.type })).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
-}
-
-function generateInsights(entries: MoodEntry[]): MoodInsight[] {
-  const insights: MoodInsight[] = [];
-  if (entries.length === 0) return insights;
-  const avg = calculateAverageScore(entries);
-  if (avg >= 7) insights.push({ type: 'positive', title: "You're Doing Great!", description: `Your average mood score is ${avg}/10. Keep nurturing what makes you feel good.`, icon: 'Sun' });
-  else if (avg <= 4) insights.push({ type: 'warning', title: 'Tough Period', description: `Your average score is ${avg}/10. Remember, it's okay to not be okay. Consider reaching out to someone you trust.`, icon: 'Heart' });
-  else insights.push({ type: 'info', title: 'Steady Journey', description: `Your average mood is ${avg}/10. You're navigating life with balance.`, icon: 'Compass' });
-  const recent = entries.slice(0, 7);
-  const sadCount = recent.filter(e => e.mood === 'sedih' || e.mood === 'marah' || e.mood === 'cemas').length;
-  if (sadCount >= 4) insights.push({ type: 'suggestion', title: 'Check In With Yourself', description: "You've had several tough days recently. A breathing exercise or journaling session might help.", icon: 'Wind' });
-  const happyCount = recent.filter(e => e.mood === 'senang').length;
-  if (happyCount >= 3) insights.push({ type: 'positive', title: 'Joy Pattern Detected', description: "You've had multiple happy days recently! What's been going well?", icon: 'Sparkles' });
-  const dom = getDominantTrigger(entries);
-  if (dom) insights.push({ type: 'info', title: `"${TRIGGER_LIST.find(t => t.type === dom.type)?.label}" Is a Key Theme`, description: `This trigger appears most frequently. Awareness is the first step to understanding your patterns.`, icon: 'Target' });
-  return insights;
-}
+// ==================== CONSTANTS ====================
+const MOOD_LABELS: Record<MoodType, { label: string; emoji: string; color: string }> = {
+  senang: { label: 'Happy', emoji: '😊', color: '#10b981' },
+  biasa: { label: 'Okay', emoji: '😐', color: '#6b7280' },
+  capek: { label: 'Tired', emoji: '😓', color: '#f59e0b' },
+  cemas: { label: 'Anxious', emoji: '😰', color: '#ef4444' },
+  sedih: { label: 'Sad', emoji: '😢', color: '#3b82f6' },
+  marah: { label: 'Angry', emoji: '😠', color: '#dc2626' },
+  kosong: { label: 'Empty', emoji: '😶', color: '#9ca3af' },
+};
 
 // ==================== CUSTOM TOOLTIP ====================
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; payload: { mood: MoodType; date: string } }>; label?: string }) {
   if (!active || !payload || payload.length === 0) return null;
   const data = payload[0];
-  const moodInfo = MOOD_LIST.find(m => m.type === data.payload.mood);
+  const moodInfo = MOOD_LABELS[data.payload.mood];
   return (
     <div className="bg-white/95 backdrop-blur rounded-xl p-3 text-sm border border-black/[0.08] shadow-lg">
       <p className="text-[#0a0a0a] font-medium">{data.payload.date} · {label}</p>
@@ -118,7 +46,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 }
 
 // ==================== INSIGHT ICON ====================
-function InsightIcon({ type }: { type: MoodInsight['type'] }) {
+function InsightIcon({ type }: { type: 'info' | 'warning' | 'positive' | 'suggestion' }) {
   switch (type) {
     case 'positive': return <CheckCircle className="w-5 h-5" />;
     case 'warning': return <AlertCircle className="w-5 h-5" />;
@@ -138,29 +66,41 @@ const CHART_COLORS = ['#0a0a0a', '#555555', '#7DA87B', '#D4A0A0', '#FFD93D', '#F
 
 // ==================== MAIN PAGE ====================
 export default function AnalyticsPage() {
-  const [entries, setEntries] = useState<MoodEntry[]>([]);
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  
   useEffect(() => { 
     const loadData = async () => {
-      const moodEntries = await getMoodEntries();
-      setEntries(moodEntries);
+      try {
+        const analyticsData = await getAnalyticsData();
+        setData(analyticsData);
+      } catch (error) {
+        console.error('Error loading analytics:', error);
+      } finally {
+        setLoading(false);
+      }
     };
     loadData();
   }, []);
 
-  const avgScore   = useMemo(() => calculateAverageScore(entries), [entries]);
-  const topMood    = useMemo(() => getMostFrequentMood(entries), [entries]);
-  const topTrigger = useMemo(() => getDominantTrigger(entries), [entries]);
-  const weeklyData  = useMemo(() => getWeeklyData(entries), [entries]);
-  const monthlyData = useMemo(() => getMonthlyData(entries), [entries]);
-  const moodDist    = useMemo(() => getMoodDistribution(entries), [entries]);
-  const triggerDist = useMemo(() => getTriggerDistribution(entries), [entries]);
-  const insights    = useMemo(() => generateInsights(entries), [entries]);
-
-  const topMoodInfo    = topMood    ? MOOD_LIST.find(m => m.type === topMood.type)    : null;
-  const topTriggerInfo = topTrigger ? TRIGGER_LIST.find(t => t.type === topTrigger.type) : null;
+  // Loading state
+  if (loading) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-white pt-14 pb-12 px-4 flex items-center justify-center">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            className="w-12 h-12 border-4 border-black/10 border-t-[#0a0a0a] rounded-full"
+          />
+        </div>
+      </>
+    );
+  }
 
   // Empty state
-  if (entries.length === 0) {
+  if (!data || (data.totalEntries === 0 && data.totalCheckins === 0)) {
     return (
       <>
         <Navbar />
@@ -186,11 +126,39 @@ export default function AnalyticsPage() {
     );
   }
 
+  // Get top mood info
+  const topMood = data.moodDistribution[0];
+  const topTrigger = data.triggerDistribution[0];
+
   const stats = [
-    { label: 'Average Score',    value: avgScore.toString(), sub: '/10',                     icon: TrendingUp, color: '#0a0a0a' },
-    { label: 'Most Frequent',    value: topMoodInfo?.emoji || '—', sub: topMoodInfo?.label || '', icon: Activity,   color: topMoodInfo ? MOOD_COLORS[topMoodInfo.type as MoodType] : '#9a9a9a' },
-    { label: 'Dominant Trigger', value: topTriggerInfo?.label || '—', sub: topTrigger ? `${topTrigger.count}×` : '', icon: Hash, color: '#555555' },
-    { label: 'Total Check-ins',  value: entries.length.toString(), sub: 'entries',           icon: BarChart3,  color: '#3a7a3a' },
+    { 
+      label: 'Average Score', 
+      value: data.averageScore.toString(), 
+      sub: '/10', 
+      icon: TrendingUp, 
+      color: '#0a0a0a' 
+    },
+    { 
+      label: 'Most Frequent', 
+      value: topMood?.emoji || '—', 
+      sub: topMood?.name || '', 
+      icon: Activity, 
+      color: topMood?.color || '#9a9a9a' 
+    },
+    { 
+      label: 'Check-ins/Day', 
+      value: data.averageCheckinsPerDay.toString(), 
+      sub: 'average', 
+      icon: Clock, 
+      color: '#3a7a3a' 
+    },
+    { 
+      label: 'Total Check-ins', 
+      value: data.totalCheckins.toString(), 
+      sub: `+${data.totalEntries} entries`, 
+      icon: BarChart3, 
+      color: '#555555' 
+    },
   ];
 
   return (
@@ -235,7 +203,7 @@ export default function AnalyticsPage() {
               <h3 className="text-lg font-semibold text-[#0a0a0a] mb-4" style={{ fontFamily: 'var(--font-heading)' }}>Weekly Mood</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={weeklyData}>
+                  <AreaChart data={data.weeklyData}>
                     <defs>
                       <linearGradient id="gradientArea" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor="#0a0a0a" stopOpacity={0.12} />
@@ -261,7 +229,7 @@ export default function AnalyticsPage() {
               <h3 className="text-lg font-semibold text-[#0a0a0a] mb-4" style={{ fontFamily: 'var(--font-heading)' }}>Monthly Overview</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyData}>
+                  <BarChart data={data.monthlyData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" />
                     <XAxis dataKey="week" stroke="#9a9a9a" fontSize={10} tickLine={false} axisLine={false} />
                     <YAxis domain={[0,10]} stroke="#9a9a9a" fontSize={12} tickLine={false} axisLine={false} />
@@ -279,9 +247,9 @@ export default function AnalyticsPage() {
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={moodDist} cx="50%" cy="50%" innerRadius={55} outerRadius={85}
+                    <Pie data={data.moodDistribution} cx="50%" cy="50%" innerRadius={55} outerRadius={85}
                       dataKey="value" nameKey="name" paddingAngle={3} strokeWidth={0}>
-                      {moodDist.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                      {data.moodDistribution.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                     </Pie>
                     <Tooltip contentStyle={{ background: 'rgba(255,255,255,0.97)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '12px', fontSize: '13px', color: '#0a0a0a' }} />
                     <Legend formatter={(value) => <span style={{ color: '#9a9a9a', fontSize: '12px' }}>{value}</span>} />
@@ -295,11 +263,11 @@ export default function AnalyticsPage() {
               className="glass-card rounded-2xl p-6">
               <h3 className="text-lg font-semibold text-[#0a0a0a] mb-4" style={{ fontFamily: 'var(--font-heading)' }}>Trigger Frequency</h3>
               <div className="space-y-3 mt-2">
-                {triggerDist.length === 0 ? (
+                {data.triggerDistribution.length === 0 ? (
                   <p className="text-sm text-[#9a9a9a]">No trigger data yet.</p>
-                ) : triggerDist.map((t, i) => {
-                  const maxVal = triggerDist[0]?.value || 1;
-                  const pct = Math.round((t.value / entries.length) * 100);
+                ) : data.triggerDistribution.map((t, i) => {
+                  const maxVal = data.triggerDistribution[0]?.value || 1;
+                  const pct = Math.round((t.value / (data.totalCheckins + data.totalEntries)) * 100);
                   return (
                     <motion.div key={t.type} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.05 }}>
                       <div className="flex items-center justify-between mb-1">
@@ -319,13 +287,13 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Insights */}
-          {insights.length > 0 && (
+          {data.insights.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
               <h3 className="text-lg font-semibold text-[#0a0a0a] mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)' }}>
                 <Sparkles className="w-5 h-5 text-[#0a0a0a]" />Insights
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {insights.map((insight, i) => {
+                {data.insights.map((insight, i) => {
                   const colors = INSIGHT_COLORS[insight.type] || INSIGHT_COLORS.info;
                   return (
                     <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
