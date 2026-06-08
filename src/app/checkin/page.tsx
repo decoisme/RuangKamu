@@ -103,10 +103,10 @@ export default function CheckinPage() {
             </span>
           </div>
           <h1 className="text-3xl font-black text-[#0a0a0a] leading-tight tracking-tight">
-            Gimana harimu?
+            How's your day?
           </h1>
           <p className="text-[#9a9a9a] mt-1.5 text-sm">
-            Catat perasaanmu sepanjang hari untuk temukan polanya
+            Track your feelings throughout the day to discover patterns
           </p>
         </motion.div>
 
@@ -119,7 +119,7 @@ export default function CheckinPage() {
             >
               <Loader2 size={28} className="text-[#c5c5c5]" />
             </motion.div>
-            <p className="text-sm text-[#9a9a9a]">Memuat check-in kamu...</p>
+            <p className="text-sm text-[#9a9a9a]">Loading your check-ins...</p>
           </div>
         ) : (
           <>
@@ -138,10 +138,10 @@ export default function CheckinPage() {
                   <Sunrise size={32} color="white" strokeWidth={1.5} />
                 </div>
                 <h3 className="text-xl font-bold text-[#0a0a0a] mb-2">
-                  Mulai hari ini dengan check-in
+                  Start today with a check-in
                 </h3>
                 <p className="text-[#6b7280] text-sm mb-6 max-w-xs mx-auto leading-relaxed">
-                  Catat moodmu beberapa kali sehari untuk memahami pola dan mendapat insight personal
+                  Log your mood multiple times a day to understand patterns and get personal insights
                 </p>
                 <div className="flex items-center justify-center gap-4 text-xs text-[#9a9a9a]">
                   <div className="flex items-center gap-1.5">
@@ -179,10 +179,10 @@ export default function CheckinPage() {
                   </div>
                   <div className="flex-1">
                     <h3 className="text-base font-bold text-[#0a0a0a] mb-1">
-                      Konsisten banget! 🎉
+                      Great consistency! 🎉
                     </h3>
                     <p className="text-sm text-[#6b7280] leading-relaxed">
-                      Kamu sudah log {checkins.length} check-in hari ini. Terus pantau untuk lihat pola moodmu.
+                      You've logged {checkins.length} check-ins today. Keep tracking to see your mood patterns.
                     </p>
 
                     {summary.moodVolatility !== undefined && summary.moodVolatility > 2 && (
@@ -192,7 +192,7 @@ export default function CheckinPage() {
                           Insight
                         </div>
                         <p className="text-xs text-[#6b7280] leading-relaxed">
-                          Moodmu cukup berfluktuasi hari ini. Coba identifikasi apa yang memicu perubahan tersebut.
+                          Your mood has been quite fluctuating today. Try to identify what triggers these changes.
                         </p>
                       </div>
                     )}
@@ -213,18 +213,18 @@ export default function CheckinPage() {
           {[
             {
               icon: <Target size={18} strokeWidth={1.8} className="text-[#0a0a0a]" />,
-              title: '3–5 check-in',
-              sub: 'Pagi, siang, dan malam untuk hasil terbaik',
+              title: '3–5 check-ins',
+              sub: 'Morning, afternoon, and evening for best results',
             },
             {
               icon: <Timer size={18} strokeWidth={1.8} className="text-[#0a0a0a]" />,
-              title: '5–10 detik',
-              sub: 'Cepat & mudah, cukup pilih mood & intensitas',
+              title: '5–10 seconds',
+              sub: 'Quick & easy, just select mood & intensity',
             },
             {
               icon: <ShieldCheck size={18} strokeWidth={1.8} className="text-[#0a0a0a]" />,
-              title: 'Privasi aman',
-              sub: 'Data terenkripsi, hanya bisa dilihat kamu',
+              title: 'Secure privacy',
+              sub: 'Encrypted data, only you can see it',
             },
           ].map((card, i) => (
             <div
