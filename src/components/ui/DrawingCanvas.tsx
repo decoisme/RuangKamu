@@ -35,13 +35,45 @@ const BRUSH_SIZES = [
 
 // ==================== PIXEL ANALYSIS ENGINE ====================
 interface DrawingStats {
-  dominantColors: Array<{ name: string; value: string; proportion: number }>;
+  dominantColors: Array<{ name: string; label: string; value: string; proportion: number }>;
   coverage: number;            // 0–1
-  strokeComplexity: number;    // 0–1 (entropy proxy)
   verticalBias: "top" | "center" | "bottom" | "spread";
   horizontalBias: "left" | "center" | "right" | "spread";
-  colorVariety: number;        // 0–1
+  colorVariety: number;        // number of distinct color families used
   darknessBias: "dark" | "neutral" | "light";
+  strokeRoughness: number;     // 0–1 (high = choppy/erratic, low = smooth)
+  hasMultipleClusters: boolean; // marks drawn in separate areas = fragmented
+}
+
+function toHSL(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  const rn = r / 255, gn = g / 255, bn = b / 255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h60 = max === rn
+    ? ((gn - bn) / d + (gn < bn ? 6 : 0))
+    : max === gn
+    ? (bn - rn) / d + 2
+    : (rn - gn) / d + 4;
+  return { h: h60 * 60, s, l };
+}
+
+function categorizeColor(r: number, g: number, b: number): string {
+  const { h, s, l } = toHSL(r, g, b);
+  if (l < 0.15) return "black";
+  if (l > 0.85 && s < 0.15) return "white";
+  if (s < 0.12) return l < 0.45 ? "dark" : "gray";
+  if (l < 0.25) return "dark";
+  if (h < 15 || h >= 345) return "red";
+  if (h < 40) return "orange";
+  if (h < 70) return "yellow";
+  if (h < 165) return "green";
+  if (h < 255) return "blue";
+  if (h < 290) return "purple";
+  if (h < 345) return "pink";
+  return "red";
 }
 
 function analyzeCanvas(canvas: HTMLCanvasElement): DrawingStats {
@@ -50,317 +82,259 @@ function analyzeCanvas(canvas: HTMLCanvasElement): DrawingStats {
 
   const w = canvas.width;
   const h = canvas.height;
+
+  // Sample every other pixel for performance
+  const STEP = 2;
   const imgData = ctx.getImageData(0, 0, w, h);
   const pixels = imgData.data;
 
-  // Count non-white pixels in a grid
   const colorBuckets: Record<string, number> = {};
   let totalNonWhite = 0;
-
-  // Spatial tracking (divide into 3×3 grid)
-  const gridW = Math.floor(w / 3);
-  const gridH = Math.floor(h / 3);
-  const spatialGrid: number[][] = Array.from({ length: 3 }, () => [0, 0, 0]);
-
-  // Track darkness
   let totalBrightness = 0;
-  let brightnessSamples = 0;
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  // Spatial grid 4×4 for finer position detection
+  const GRID = 4;
+  const gW = Math.floor(w / GRID);
+  const gH = Math.floor(h / GRID);
+  const spatialGrid: number[][] = Array.from({ length: GRID }, () => Array(GRID).fill(0));
+
+  // Roughness: count edge transitions (color changes in adjacent pixels)
+  let edgeChanges = 0;
+  let edgeSamples = 0;
+
+  for (let y = 0; y < h; y += STEP) {
+    for (let x = 0; x < w; x += STEP) {
       const i = (y * w + x) * 4;
-      const r = pixels[i];
-      const g = pixels[i + 1];
-      const b = pixels[i + 2];
+      const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
 
-      if (r > 238 && g > 238 && b > 238) continue; // skip near-white
+      if (r > 235 && g > 235 && b > 235) {
+        // Check for edge transitions even on white boundaries
+        if (x > 0) {
+          const pi = (y * w + (x - STEP)) * 4;
+          const pr = pixels[pi], pg = pixels[pi + 1], pb = pixels[pi + 2];
+          const wasDark = !(pr > 235 && pg > 235 && pb > 235);
+          if (wasDark) edgeChanges++; edgeSamples++;
+        }
+        continue;
+      }
 
       totalNonWhite++;
-      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-      totalBrightness += brightness;
-      brightnessSamples++;
+      totalBrightness += (r * 299 + g * 587 + b * 114) / 1000;
 
-      // Spatial bucket
-      const gx = Math.min(2, Math.floor(x / gridW));
-      const gy = Math.min(2, Math.floor(y / gridH));
+      const gx = Math.min(GRID - 1, Math.floor(x / gW));
+      const gy = Math.min(GRID - 1, Math.floor(y / gH));
       spatialGrid[gy][gx]++;
 
-      // Color categorization
       const key = categorizeColor(r, g, b);
-      colorBuckets[key] = (colorBuckets[key] || 0) + 1;
+      if (key !== "white") colorBuckets[key] = (colorBuckets[key] || 0) + 1;
+
+      // Edge detection
+      if (x > 0) {
+        const pi = (y * w + (x - STEP)) * 4;
+        const pr = pixels[pi], pg = pixels[pi + 1], pb = pixels[pi + 2];
+        const brightDiff = Math.abs(
+          (r * 299 + g * 587 + b * 114) / 1000 -
+          (pr * 299 + pg * 587 + pb * 114) / 1000
+        );
+        if (brightDiff > 40) edgeChanges++;
+        edgeSamples++;
+      }
     }
   }
 
-  const totalPixels = (w * h) / 4; // device ratio adjusted approx
-  const coverage = Math.min(1, totalNonWhite / (totalPixels * 0.85));
+  const totalSampledPixels = (w * h) / (STEP * STEP);
+  const coverage = Math.min(1, totalNonWhite / (totalSampledPixels * 0.9));
 
-  // Dominant colors (map to COLORS palette)
-  const sortedColors = Object.entries(colorBuckets)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4);
-
-  const colorNames: Record<string, { name: string; value: string }> = {
-    black:   { name: "black",   value: "#0a0a0a" },
-    red:     { name: "red",     value: "#E05C5C" },
-    orange:  { name: "orange",  value: "#F59E0B" },
-    yellow:  { name: "yellow",  value: "#FCD34D" },
-    green:   { name: "green",   value: "#6DAF7A" },
-    blue:    { name: "blue",    value: "#60A5FA" },
-    purple:  { name: "purple",  value: "#8B7EC8" },
-    pink:    { name: "pink",    value: "#F472B6" },
-    gray:    { name: "gray",    value: "#94A3B8" },
-    dark:    { name: "dark",    value: "#334155" },
+  // Color mapping
+  const colorMeta: Record<string, { label: string; value: string }> = {
+    black:  { label: "hitam",  value: "#0a0a0a" },
+    dark:   { label: "gelap",  value: "#334155" },
+    red:    { label: "merah",  value: "#E05C5C" },
+    orange: { label: "oranye", value: "#F59E0B" },
+    yellow: { label: "kuning", value: "#FCD34D" },
+    green:  { label: "hijau",  value: "#6DAF7A" },
+    blue:   { label: "biru",   value: "#60A5FA" },
+    purple: { label: "ungu",   value: "#8B7EC8" },
+    pink:   { label: "pink",   value: "#F472B6" },
+    gray:   { label: "abu",    value: "#94A3B8" },
   };
 
-  const dominantColors = sortedColors.map(([key, count]) => ({
-    name: colorNames[key]?.name || key,
-    value: colorNames[key]?.value || "#9a9a9a",
-    proportion: count / totalNonWhite,
+  const sortedColors = Object.entries(colorBuckets)
+    .sort((a, b) => b[1] - a[1]);
+
+  const dominantColors = sortedColors.slice(0, 4).map(([key, count]) => ({
+    name: key,
+    label: colorMeta[key]?.label || key,
+    value: colorMeta[key]?.value || "#9a9a9a",
+    proportion: count / (totalNonWhite || 1),
   }));
 
-  // Spatial bias
-  const topSum = spatialGrid[0].reduce((a, b) => a + b, 0);
-  const midRowSum = spatialGrid[1].reduce((a, b) => a + b, 0);
-  const botSum = spatialGrid[2].reduce((a, b) => a + b, 0);
+  // Spatial bias using 4×4 grid collapsed to 3 zones
+  const topRows = spatialGrid.slice(0, 1).reduce((s, r) => s + r.reduce((a,b) => a+b, 0), 0);
+  const midRows = spatialGrid.slice(1, 3).reduce((s, r) => s + r.reduce((a,b) => a+b, 0), 0);
+  const botRows = spatialGrid.slice(3).reduce((s, r) => s + r.reduce((a,b) => a+b, 0), 0);
+  const leftCols = spatialGrid.reduce((s, r) => s + r[0] + r[1], 0);
+  const rightCols = spatialGrid.reduce((s, r) => s + r[2] + r[3], 0);
 
-  const leftSum = spatialGrid.reduce((s, row) => s + row[0], 0);
-  const centerColSum = spatialGrid.reduce((s, row) => s + row[1], 0);
-  const rightSum = spatialGrid.reduce((s, row) => s + row[2], 0);
-
-  const rowMax = Math.max(topSum, midRowSum, botSum);
-  const colMax = Math.max(leftSum, centerColSum, rightSum);
-  const rowSpread = Math.min(topSum, midRowSum, botSum) / (rowMax || 1) > 0.35;
-  const colSpread = Math.min(leftSum, centerColSum, rightSum) / (colMax || 1) > 0.35;
+  const rowTotal = topRows + midRows + botRows || 1;
+  const colTotal = leftCols + rightCols || 1;
 
   const verticalBias: DrawingStats["verticalBias"] =
-    rowSpread ? "spread"
-    : rowMax === topSum ? "top"
-    : rowMax === botSum ? "bottom"
-    : "center";
+    (Math.max(topRows, botRows) / rowTotal < 0.45 && midRows / rowTotal > 0.4) ? "center"
+    : topRows > botRows * 1.5 ? "top"
+    : botRows > topRows * 1.5 ? "bottom"
+    : "spread";
 
   const horizontalBias: DrawingStats["horizontalBias"] =
-    colSpread ? "spread"
-    : colMax === leftSum ? "left"
-    : colMax === rightSum ? "right"
+    leftCols > rightCols * 1.4 ? "left"
+    : rightCols > leftCols * 1.4 ? "right"
+    : Math.abs(leftCols - rightCols) / colTotal < 0.15 ? "spread"
     : "center";
 
-  // Color variety
-  const colorVariety = Math.min(1, Object.keys(colorBuckets).length / 7);
+  // Cluster detection: check how many of the 4×4 cells are occupied
+  const occupiedCells = spatialGrid.flat().filter(v => v > totalNonWhite * 0.02).length;
+  const hasMultipleClusters = occupiedCells >= 5 && coverage < 0.4;
 
-  // Darkness bias
-  const avgBrightness = brightnessSamples > 0 ? totalBrightness / brightnessSamples : 128;
+  const colorVariety = Object.keys(colorBuckets).filter(k => k !== "black" && k !== "dark" && k !== "gray").length;
+  const avgBrightness = totalNonWhite > 0 ? totalBrightness / totalNonWhite : 200;
   const darknessBias: DrawingStats["darknessBias"] =
-    avgBrightness < 80 ? "dark" : avgBrightness > 180 ? "light" : "neutral";
+    avgBrightness < 90 ? "dark" : avgBrightness > 175 ? "light" : "neutral";
 
-  // Stroke complexity: rough estimate via color transition changes
-  const strokeComplexity = Math.min(1, colorVariety * 0.5 + (coverage > 0.3 ? 0.3 : coverage));
+  const strokeRoughness = edgeSamples > 0
+    ? Math.min(1, (edgeChanges / edgeSamples) * 4)
+    : 0;
 
   return {
     dominantColors,
     coverage,
-    strokeComplexity,
     verticalBias,
     horizontalBias,
     colorVariety,
     darknessBias,
+    strokeRoughness,
+    hasMultipleClusters,
   };
-}
-
-function categorizeColor(r: number, g: number, b: number): string {
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-
-  if (l < 60) return "black";
-  if (l < 100 && max - min < 40) return "dark";
-  if (max - min < 30) return "gray";
-
-  const h = max === r
-    ? ((g - b) / (max - min)) % 6
-    : max === g
-    ? (b - r) / (max - min) + 2
-    : (r - g) / (max - min) + 4;
-  const hDeg = (h * 60 + 360) % 360;
-
-  if (hDeg < 20 || hDeg >= 340) return "red";
-  if (hDeg < 45)  return "orange";
-  if (hDeg < 70)  return "yellow";
-  if (hDeg < 160) return "green";
-  if (hDeg < 240) return "blue";
-  if (hDeg < 280) return "purple";
-  return "pink";
 }
 
 // ==================== INTERPRETATION ENGINE ====================
-function buildRichInterpretation(stats: DrawingStats): string {
-  const { dominantColors, coverage, strokeComplexity, verticalBias, horizontalBias, colorVariety, darknessBias } = stats;
+function buildInterpretation(stats: DrawingStats): string {
+  const {
+    dominantColors, coverage, verticalBias, horizontalBias,
+    colorVariety, darknessBias, strokeRoughness, hasMultipleClusters,
+  } = stats;
 
-  const mainColor = dominantColors[0];
-  const secondColor = dominantColors[1];
-
-  // ── COLOR MEANINGS ──
-  const colorNarratives: Record<string, string[]> = {
-    black: [
-      "The deep, grounding darkness of your strokes speaks of honesty — you're not looking away from something heavy.",
-      "Black carries depth. There's weight here, but weight isn't weakness; it's gravity, it's truth.",
-      "Your choice of darkness may reflect a quiet turning inward — a search for clarity beneath the noise.",
-    ],
-    dark: [
-      "These shadowy tones hold something unspoken — emotions that haven't found words yet.",
-      "Dark hues often carry stories we're still trying to understand ourselves.",
-    ],
-    red: [
-      "Red pulses through this piece — something alive and urgent moves in you right now.",
-      "There's fire here. Whether that's passion, frustration, or fierce love, it demands to be felt.",
-      "Red is the body's color — heartbeat, urgency, aliveness. You're fully present in whatever this is.",
-    ],
-    orange: [
-      "Orange sits between fire and warmth — you might be processing something restless, something becoming.",
-      "There's an aliveness in this orange, like a late afternoon sky. Energetic, searching.",
-      "Orange carries creative restlessness — ideas and feelings looking for form.",
-    ],
-    yellow: [
-      "Yellow reaches toward light, even when it's hard to find. There's hope coded into this color.",
-      "Like sunlight through leaves, your yellows suggest a part of you still reaching upward.",
-      "Brightness lives here — maybe tentative, maybe defiant, but reaching.",
-    ],
-    green: [
-      "Green speaks of healing, of wanting to grow through rather than around something.",
-      "There's something restorative in these greens — a need for calm, for ground beneath your feet.",
-      "Like new growth after rain, your greens carry the possibility of renewal.",
-    ],
-    blue: [
-      "Blue is the color of deep water and open sky — contemplation, longing, or a need for peace.",
-      "Your blues suggest you're thinking deeply, perhaps sitting with something rather than rushing through it.",
-      "Blue holds both sadness and serenity. There's depth here worth acknowledging.",
-    ],
-    purple: [
-      "Purple lives at the edge of feeling and meaning — you may be processing something layered, something transformative.",
-      "These purples suggest emotional complexity, the kind that doesn't resolve quickly but grows into something rich.",
-      "Like dusk, your purples carry transition — between one state of being and another.",
-    ],
-    pink: [
-      "Pink holds vulnerability and tenderness — emotions that are soft but no less real.",
-      "Your use of pink speaks to gentleness, perhaps toward yourself or someone you care about.",
-      "There's something sweet and honest in these pinks — an openness to feeling.",
-    ],
-    gray: [
-      "Gray carries ambiguity — neither here nor there. You may be in the middle of something, not yet resolved.",
-      "These neutral tones suggest you're holding space for uncertainty, which is its own kind of wisdom.",
-      "Gray is the color of fog and early morning — things not yet clear but present.",
-    ],
-  };
-
-  // ── COVERAGE NARRATIVES ──
-  const coverageNarratives = {
-    full: [
-      "You've filled the space completely — whatever you're feeling takes up a lot of room right now, and that's okay.",
-      "The fullness of this drawing suggests these emotions are significant, worth taking seriously.",
-      "You didn't hold back. There's courage in letting it all out, even on a canvas.",
-    ],
-    moderate: [
-      "You've given yourself space to breathe within the drawing — engaging deeply without being consumed.",
-      "The balance here suggests you're processing with intention — holding the feeling, not drowning in it.",
-      "There's thoughtfulness in how you've filled this space — measured, present, aware.",
-    ],
-    minimal: [
-      "The quiet marks you've left carry weight despite their smallness — sometimes restraint holds everything.",
-      "A few careful strokes can say what paragraphs can't. You're choosing what matters.",
-      "This sparseness might mean you're still approaching something, still finding words for it. That's okay.",
-    ],
-  };
-
-  // ── SPATIAL NARRATIVES ──
-  const spatialLines: Record<string, string> = {
-    top:    "Your marks gather at the top — reaching, aspiring, or perhaps trying to get above something.",
-    bottom: "You've anchored toward the base — grounded, but perhaps weighed down too.",
-    center: "You've drawn inward, toward center — this feels personal, close to the chest.",
-    spread: "Your expression spreads across the whole canvas — these feelings don't fit neatly in one place.",
-    left:   "The left side carries more energy — beginnings, the past, or things not yet resolved.",
-    right:  "You've moved toward the right — forward motion, what's coming, anticipation.",
-  };
-
-  // ── COLOR VARIETY ──
-  const varietyLines: Record<string, string> = {
-    rich:    "The range of colors you've used reflects emotional complexity — you're holding many things at once.",
-    moderate:"A few colors work together here, suggesting layers you're sorting through.",
-    simple:  "You've kept to one or two tones — focused, perhaps, or deliberately contained.",
-  };
-
-  const varietyKey = colorVariety > 0.6 ? "rich" : colorVariety > 0.3 ? "moderate" : "simple";
-
-  // ── REFLECTIVE QUESTIONS ──
-  const reflectiveQuestions = [
-    "What does this drawing mean to you — not what it looks like, but what it *feels* like?",
-    "If this drawing could speak, what would it say first?",
-    "Where in your body do you feel what this drawing expresses?",
-    "Is there something in this drawing you haven't let yourself say out loud yet?",
-    "What would change if you looked at this drawing a year from now?",
-    "What part of this drawing feels most true to where you are right now?",
-    "What would you draw differently if you were feeling the opposite of this?",
-  ];
-
-  // ── AFFIRMATIONS ──
-  const affirmations = [
-    "Your feelings are real and worthy of space — in art, in words, in the world.",
-    "Thank you for showing up for yourself today, in whatever form that takes. ♥",
-    "Expression is brave work. You're doing it.",
-    "There's no wrong way to feel. This drawing is proof you're paying attention.",
-    "You are allowed to feel all of this — and more.",
-    "Art is how we say what language can't hold. You're speaking.",
-  ];
-
-  // ── BUILD OUTPUT ──
-  const lines: string[] = [];
-
-  // Opening color reading
-  if (mainColor) {
-    const colorKey = mainColor.name in colorNarratives ? mainColor.name : "gray";
-    const options = colorNarratives[colorKey] || colorNarratives["gray"];
-    lines.push(options[Math.floor(Math.random() * options.length)]);
+  if (!dominantColors || dominantColors.length === 0) {
+    return "Kanvasnya masih kosong — coba gambar dulu, lalu minta AI membaca :)";
   }
 
-  // Secondary color nuance
-  if (secondColor && secondColor.proportion > 0.12) {
-    const secKey = secondColor.name in colorNarratives ? secondColor.name : "gray";
-    const secOptions = colorNarratives[secKey] || [];
-    if (secOptions.length > 0) {
-      const secLine = secOptions[Math.floor(Math.random() * secOptions.length)];
-      lines.push(`Underneath that, ${secLine.charAt(0).toLowerCase() + secLine.slice(1)}`);
-    }
+  const main = dominantColors[0];
+  const second = dominantColors[1];
+  const parts: string[] = [];
+
+  // ── 1. WARNA UTAMA ──
+  const colorInsights: Record<string, string> = {
+    black:  "Kamu banyak pakai warna hitam. Warna ini sering muncul saat seseorang sedang memproses sesuatu yang berat atau serius, atau memang suka ekspresi yang tegas.",
+    dark:   "Warna-warna gelap mendominasi gambarmu. Ini bisa berarti kamu lagi di fase yang lebih introspektif atau ada sesuatu yang terasa berat hari ini.",
+    red:    "Merah adalah warna yang kuat — bisa menandakan kamu lagi merasa intens, baik itu semangat, frustrasi, atau emosi yang sedang memuncak.",
+    orange: "Oranye biasanya muncul saat seseorang merasa aktif atau sedikit gelisah. Energi tinggi, tapi mungkin belum tahu harus diarahkan ke mana.",
+    yellow: "Kuning sering dikaitkan dengan keceriaan atau harapan. Kamu mungkin sedang berusaha melihat sisi positif dari sesuatu.",
+    green:  "Hijau menandakan ketenangan atau keinginan untuk recovery. Kamu mungkin butuh sedikit jeda dan ruang untuk napas.",
+    blue:   "Biru menunjukkan kamu sedang dalam mode reflektif atau butuh ketenangan. Bisa juga ada rasa rindu atau sedikit sedih yang belum terungkap.",
+    purple: "Ungu sering muncul saat emosi terasa kompleks atau campur aduk. Kamu mungkin sedang memproses lebih dari satu perasaan sekaligus.",
+    pink:   "Pink menunjukkan sisi yang lebih lembut — mungkin kamu sedang merasakan sesuatu yang hangat, atau ingin lebih sayang ke diri sendiri.",
+    gray:   "Abu-abu sering muncul saat seseorang merasa netral, lelah, atau belum yakin dengan apa yang dirasakan. Itu wajar kok.",
+  };
+
+  parts.push(colorInsights[main.name] || `Kamu menggunakan warna ${main.label} sebagai warna utama.`);
+
+  // ── 2. WARNA KEDUA (jika signifikan) ──
+  if (second && second.proportion > 0.15) {
+    const secondLines: Record<string, string> = {
+      red:    `Ada sentuhan merah juga — kombinasi ini bisa menandakan perasaan yang kuat tapi juga penuh semangat.`,
+      blue:   `Kombinasi dengan biru menunjukkan ada sisi tenang di balik ekspresimu.`,
+      green:  `Sentuhan hijau menambah nuansa yang lebih damai di antara ekspresimu.`,
+      yellow: `Warna kuning di sini seperti kilatan harapan kecil di tengah perasaan lainnya.`,
+      black:  `Hitam sebagai warna pendukung biasanya menambah ketegasan atau kedalaman ekspresi.`,
+      purple: `Ada ungu juga — ini membuat gambarmu terasa lebih emosional dan berlapis.`,
+      pink:   `Sentuhan pink di sini membuat ekspresimu terasa lebih lembut.`,
+      orange: `Oranye di sampingnya menambah kesan energik.`,
+      gray:   `Abu-abu sebagai pendukung menambah nuansa ketidakpastian atau keheningan.`,
+      dark:   `Warna gelap sebagai pendukung memperkuat kesan serius dari gambarmu.`,
+    };
+    const secondLine = secondLines[second.name];
+    if (secondLine) parts.push(secondLine);
   }
 
-  // Color variety
-  lines.push(varietyLines[varietyKey]);
-
-  // Spatial reading
-  const spatialKey = [verticalBias, horizontalBias]
-    .filter(v => v !== "spread" && v !== "center")
-    .find(Boolean) || verticalBias;
-  if (spatialLines[spatialKey]) {
-    lines.push(spatialLines[spatialKey]);
+  // ── 3. COVERAGE (seberapa penuh kanvas) ──
+  if (coverage > 0.45) {
+    parts.push("Kamu mengisi hampir seluruh kanvas — ini menunjukkan kamu menuangkan banyak hal sekaligus, seperti ada yang perlu dikeluarkan.");
+  } else if (coverage > 0.2) {
+    parts.push("Kamu mengisi sebagian kanvas dengan cukup seimbang — tidak terlalu menahan, tapi juga tidak berlebihan.");
+  } else {
+    parts.push("Gambarmu cukup minimalis — bisa jadi kamu sedang hati-hati dalam mengekspresikan sesuatu, atau masih memulai.");
   }
 
-  // Coverage
-  const coverageKey = coverage > 0.35 ? "full" : coverage > 0.12 ? "moderate" : "minimal";
-  const coverageOptions = coverageNarratives[coverageKey];
-  lines.push(coverageOptions[Math.floor(Math.random() * coverageOptions.length)]);
+  // ── 4. STROKE ROUGHNESS ──
+  if (strokeRoughness > 0.65) {
+    parts.push("Goresan di gambarmu terlihat cepat dan tidak teratur — ini bisa menandakan kamu sedang merasa tidak tenang atau ada emosi yang ingin segera keluar.");
+  } else if (strokeRoughness < 0.25 && coverage > 0.1) {
+    parts.push("Goresanmu terlihat cukup halus dan terkontrol — kamu seperti menggambar dengan lebih tenang dan sadar.");
+  }
 
-  // Darkness note (if noteworthy)
+  // ── 5. COLOR VARIETY ──
+  if (colorVariety >= 4) {
+    parts.push(`Kamu memakai ${colorVariety} warna berbeda — gambarmu terasa seperti refleksi dari banyak perasaan yang sedang bercampur.`);
+  } else if (colorVariety === 0 && (main.name === "black" || main.name === "dark")) {
+    parts.push("Kamu hanya pakai warna gelap — kadang ini berarti ada satu perasaan dominan yang sedang memenuhi pikiran.");
+  }
+
+  // ── 6. SPATIAL ──
+  const spatialNotes: Partial<Record<string, string>> = {
+    top:    "Gambarmu cenderung di area atas — biasanya ini menandakan banyak pikiran yang berputar di kepala.",
+    bottom: "Gambarmu cenderung di area bawah — bisa jadi kamu merasa lebih terhubung ke hal-hal yang konkret atau ada sesuatu yang terasa 'berat'.",
+    left:   "Kamu banyak menggambar di sisi kiri — orang sering kali menggambar di area ini saat memikirkan masa lalu atau hal yang belum selesai.",
+    right:  "Gambarmu condong ke kanan — bisa menandakan kamu sedang melihat ke depan atau memikirkan sesuatu yang akan datang.",
+    spread: "Gambarmu tersebar di seluruh kanvas — terasa seperti banyak hal yang ingin diungkapkan sekaligus.",
+  };
+  const spatialKey = verticalBias !== "spread" && verticalBias !== "center" ? verticalBias
+    : horizontalBias !== "spread" && horizontalBias !== "center" ? horizontalBias
+    : "spread";
+  if (spatialNotes[spatialKey]) parts.push(spatialNotes[spatialKey]!);
+
+  // ── 7. CLUSTERS ──
+  if (hasMultipleClusters) {
+    parts.push("Ada beberapa kelompok gambar yang terpisah-pisah — ini menarik, bisa jadi ada lebih dari satu hal yang sedang kamu pikirkan atau rasakan.");
+  }
+
+  // ── 8. DARKNESS BIAS ──
   if (darknessBias === "dark") {
-    lines.push("The darkness you've chosen isn't absence — it's honesty.");
+    parts.push("Secara keseluruhan, gambarmu cenderung gelap. Tidak apa-apa merasa berat — ekspresi seperti ini justru membantu kamu mengenalinya.");
   } else if (darknessBias === "light") {
-    lines.push("The lightness here has its own kind of courage — choosing brightness even when things are heavy.");
+    parts.push("Gambarmu punya nuansa yang cerah dan ringan — ada energi positif yang tampak dari pilihanmu.");
   }
 
-  // Reflective question
-  lines.push("\n" + reflectiveQuestions[Math.floor(Math.random() * reflectiveQuestions.length)]);
+  // ── 9. PERTANYAAN REFLEKTIF (1 saja, langsung to the point) ──
+  const reflectiveQs = [
+    "Kalau kamu harus kasih judul buat gambar ini, kira-kira apa?",
+    "Ada bagian dari gambar ini yang paling terasa 'benar' buatmu?",
+    "Apa yang kamu rasakan pas menggambar tadi?",
+    "Kalau gambar ini bisa ngomong, kira-kira dia bilang apa?",
+    "Perasaan apa yang paling kamu ingin orang lain mengerti dari gambar ini?",
+  ];
+  parts.push("\n" + reflectiveQs[Math.floor(Math.random() * reflectiveQs.length)]);
 
-  // Affirmation
-  lines.push(affirmations[Math.floor(Math.random() * affirmations.length)]);
+  // ── 10. PENUTUP HANGAT ──
+  const closings = [
+    "Gambar itu sendiri sudah cukup — tidak perlu sempurna untuk jadi bermakna.",
+    "Terima kasih sudah meluangkan waktu untuk mengekspresikan diri. Itu bukan hal yang kecil.",
+    "Tidak ada cara yang salah untuk mengungkapkan perasaan, termasuk dengan menggambar seperti ini.",
+    "Kamu sudah melakukan sesuatu yang bagus hari ini — mengenali dan mengekspresikan perasaan itu butuh keberanian.",
+  ];
+  parts.push(closings[Math.floor(Math.random() * closings.length)]);
 
-  return lines.join("\n\n");
+  return parts.join("\n\n");
 }
+
 
 // ==================== COMPONENT ====================
 export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
@@ -475,11 +449,11 @@ export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
     setIsAnalyzing(true);
     setShowInterpretation(false);
 
-    // Simulate thinking time (real API would go here)
-    await new Promise(r => setTimeout(r, 2200));
+    // Analyze pixel data (replace with real API for even better results)
+    await new Promise(r => setTimeout(r, 1800));
 
     const stats = analyzeCanvas(canvas);
-    const interpretation = buildRichInterpretation(stats);
+    const interpretation = buildInterpretation(stats);
 
     setAiInterpretation(interpretation);
     setShowInterpretation(true);
@@ -730,7 +704,7 @@ export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
 
               <div className="px-4 py-2.5 bg-black/[0.02] border-t border-black/[0.05]">
                 <p className="text-[10px] text-[#9a9a9a] italic">
-                  This reading is based on visual patterns — your own meaning matters most.
+                  Pembacaan ini berdasarkan analisis warna & pola visual — maknamu sendiri tetap yang paling penting.
                 </p>
               </div>
             </div>
@@ -748,8 +722,7 @@ export function DrawingCanvas({ onSave, initialImage }: DrawingCanvasProps) {
         >
           <Sparkles className="w-3.5 h-3.5 text-[#8B7EC8] flex-shrink-0 mt-0.5" />
           <p className="text-xs text-[#9a9a9a] leading-relaxed">
-            <span className="font-semibold text-[#555555]">Tip:</span> Abstract is powerful — shapes, colors,
-            and pressure carry meaning even without form. Draw whatever feels right.
+            <span className="font-semibold text-[#555555]">Tips:</span> Nggak harus realistis — bentuk, warna, dan tekanan goresan semuanya punya makna. Gambar apapun yang kamu rasakan.
           </p>
         </motion.div>
       )}
