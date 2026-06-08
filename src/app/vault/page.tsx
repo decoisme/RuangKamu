@@ -231,7 +231,7 @@ export default function VaultPage() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen bg-white pt-14 pb-16 px-4 sm:px-6">
+      <div className="min-h-screen bg-[#fafafa] pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 text-center pt-8">

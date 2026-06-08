@@ -88,7 +88,7 @@ export default function AnalyticsPage() {
     return (
       <>
         <Navbar />
-        <div className="min-h-screen bg-white pt-14 pb-12 px-4 flex items-center justify-center">
+        <div className="min-h-screen bg-[#fafafa] pt-14 pb-12 px-4 flex items-center justify-center">
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
@@ -164,7 +164,7 @@ export default function AnalyticsPage() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen bg-white pt-14 pb-12 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-[#fafafa] pt-14 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">

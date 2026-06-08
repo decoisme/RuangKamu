@@ -488,7 +488,7 @@ export default function DashboardPage() {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
@@ -499,13 +499,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white pt-14">
+    <div className="min-h-screen bg-[#fafafa] pt-14">
       <Navbar />
       <GentleReminders />
       <EncouragementBadge badgeId={badgeType} show={showBadge} onClose={() => setShowBadge(false)} />
       {showHearts && <FloatingHearts count={8} />}
 
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

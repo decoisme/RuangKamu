@@ -244,7 +244,7 @@ export default function ProfilePage() {
   return (
     <>
       <Navbar />
-      <div className="min-h-screen bg-white pt-14 pb-16 px-4 sm:px-6">
+      <div className="min-h-screen bg-[#fafafa] pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-2xl mx-auto space-y-6 pt-8">
 
           {/* Profile Header */}
