@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import type { MoodCheckin } from '@/lib/checkin-service';
-import type { MoodType } from '@/lib/types';
+import type { MoodType, TriggerType } from '@/lib/types';
 
 interface CheckinCardProps {
   checkin: MoodCheckin;
@@ -52,6 +52,18 @@ const ACTIVITY_ICONS: Record<string, string> = {
   exercising: '🏃',
   studying: '📚',
   sleeping: '😴',
+};
+
+const TRIGGER_LABELS: Record<TriggerType, string> = {
+  work: 'Kerja',
+  family: 'Keluarga',
+  relationship: 'Hubungan',
+  health: 'Kesehatan',
+  money: 'Keuangan',
+  friends: 'Teman',
+  college: 'Kuliah',
+  future: 'Masa Depan',
+  unknown: 'Lainnya',
 };
 
 export default function CheckinCard({ checkin, index, onEdit, onDelete }: CheckinCardProps) {
@@ -178,7 +190,7 @@ export default function CheckinCard({ checkin, index, onEdit, onDelete }: Checki
                 key={trigger}
                 className="px-2.5 py-1 rounded-full bg-gray-100 text-[#0a0a0a] text-xs font-medium"
               >
-                {trigger}
+                {TRIGGER_LABELS[trigger] || trigger}
               </span>
             ))}
           </>

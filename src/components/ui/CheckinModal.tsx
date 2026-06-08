@@ -20,9 +20,15 @@ const MOODS: Array<{ value: MoodType; emoji: string; label: string; color: strin
   { value: 'kosong', emoji: '😶', label: 'Kosong', color: '#9ca3af' },
 ];
 
-const TRIGGERS: TriggerType[] = [
-  'Kerja', 'Keluarga', 'Hubungan', 'Kesehatan', 
-  'Keuangan', 'Cuaca', 'Kelelahan', 'Kesendirian'
+const TRIGGERS: Array<{ value: TriggerType; label: string }> = [
+  { value: 'work', label: 'Kerja' },
+  { value: 'family', label: 'Keluarga' },
+  { value: 'relationship', label: 'Hubungan' },
+  { value: 'health', label: 'Kesehatan' },
+  { value: 'money', label: 'Keuangan' },
+  { value: 'friends', label: 'Teman' },
+  { value: 'college', label: 'Kuliah' },
+  { value: 'future', label: 'Masa Depan' },
 ];
 
 const ENCOURAGING_MESSAGES = {
@@ -271,21 +277,21 @@ export default function CheckinModal({ onClose, onSuccess }: CheckinModalProps) 
               <div className="flex flex-wrap gap-2">
                 {TRIGGERS.map((trigger) => (
                   <button
-                    key={trigger}
+                    key={trigger.value}
                     onClick={() => {
-                      if (selectedTriggers.includes(trigger)) {
-                        setSelectedTriggers(selectedTriggers.filter(t => t !== trigger));
+                      if (selectedTriggers.includes(trigger.value)) {
+                        setSelectedTriggers(selectedTriggers.filter(t => t !== trigger.value));
                       } else {
-                        setSelectedTriggers([...selectedTriggers, trigger]);
+                        setSelectedTriggers([...selectedTriggers, trigger.value]);
                       }
                     }}
                     className={`px-3 py-1.5 rounded-full text-sm transition-all ${
-                      selectedTriggers.includes(trigger)
+                      selectedTriggers.includes(trigger.value)
                         ? 'bg-black text-white'
                         : 'bg-[#f5f5f5] text-[#0a0a0a] hover:bg-gray-200'
                     }`}
                   >
-                    {trigger}
+                    {trigger.label}
                   </button>
                 ))}
               </div>
