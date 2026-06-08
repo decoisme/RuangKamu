@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { HeartPulse } from 'lucide-react';
 import CheckinModal from './CheckinModal';
 
 export default function QuickCheckinFAB() {
@@ -20,20 +21,7 @@ export default function QuickCheckinFAB() {
         className="fixed bottom-6 right-6 z-40 w-16 h-16 rounded-full bg-[#0a0a0a] text-white shadow-2xl flex items-center justify-center hover:bg-black transition-all group"
         aria-label="Quick mood check-in"
       >
-        <motion.span
-          animate={{ 
-            scale: [1, 1.2, 1],
-          }}
-          transition={{ 
-            duration: 2,
-            repeat: Infinity,
-            ease: 'easeInOut'
-          }}
-          className="text-3xl"
-        >
-          😊
-        </motion.span>
-        
+        <HeartPulse size={24} strokeWidth={1.8} color="white" />
         {/* Pulse ring animation */}
         <motion.span
           animate={{
