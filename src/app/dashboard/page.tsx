@@ -51,6 +51,8 @@ import { MOOD_LIST, MOOD_COLORS } from '@/lib/types';
 
 // ===== SUPABASE INTEGRATION =====
 import { getMoodEntries as getMoodEntriesService } from '@/lib/supabase-service';
+import { getTodayCheckins, getTodaySummary } from '@/lib/checkin-service';
+import type { MoodCheckin, MoodDailySummary } from '@/lib/checkin-service';
 
 async function getMoodEntries(): Promise<MoodEntry[]> {
   return await getMoodEntriesService();
@@ -340,6 +342,8 @@ function EmptyState() {
 export default function DashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [entries, setEntries] = useState<MoodEntry[]>([]);
+  const [todayCheckins, setTodayCheckins] = useState<MoodCheckin[]>([]);
+  const [todaySummary, setTodaySummary] = useState<MoodDailySummary | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showBadge, setShowBadge] = useState(false);
   const [badgeType, setBadgeType] = useState<string>('');
@@ -349,8 +353,14 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadData = async () => {
       setUser(getUser());
-      const moodEntries = await getMoodEntries();
+      const [moodEntries, checkins, summary] = await Promise.all([
+        getMoodEntries(),
+        getTodayCheckins(),
+        getTodaySummary(),
+      ]);
       setEntries(moodEntries);
+      setTodayCheckins(checkins);
+      setTodaySummary(summary);
       setIsLoaded(true);
 
       // Check for milestones
@@ -541,11 +551,92 @@ export default function DashboardPage() {
                 transition={{ delay: 0.1 }}
                 className="glass-card rounded-2xl p-6"
               >
-                <h3 className="text-sm font-medium text-[#9a9a9a] mb-4 flex items-center gap-2">
-                  <SmilePlus className="w-4 h-4" />
-                  Today&apos;s Check-in
-                </h3>
-                {todayEntry && todayMood ? (
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-[#9a9a9a] flex items-center gap-2">
+                    <SmilePlus className="w-4 h-4" />
+                    Today&apos;s Check-in
+                  </h3>
+                  {todayCheckins.length > 0 && (
+                    <Link href="/checkin" className="text-xs text-[#0a0a0a]/60 hover:text-[#0a0a0a] transition-colors">
+                      View All →
+                    </Link>
+                  )}
+                </div>
+
+                {todayCheckins.length > 0 ? (
+                  <div className="space-y-3">
+                    {/* Summary Stats */}
+                    {todaySummary && (
+                      <div className="flex items-center gap-4 pb-3 border-b border-black/[0.06]">
+                        <div>
+                          <div className="text-2xl font-bold text-[#0a0a0a]">
+                            {todaySummary.averageScore.toFixed(1)}
+                            <span className="text-sm text-[#9a9a9a] font-normal">/10</span>
+                          </div>
+                          <div className="text-xs text-[#9a9a9a]">Average today</div>
+                        </div>
+                        <div className="h-10 w-px bg-black/[0.06]" />
+                        <div>
+                          <div className="text-2xl font-bold text-[#0a0a0a]">
+                            {todayCheckins.length}
+                          </div>
+                          <div className="text-xs text-[#9a9a9a]">Check-ins</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Check-ins Timeline (show last 3) */}
+                    <div className="space-y-2 max-h-[180px] overflow-y-auto">
+                      {todayCheckins.slice(0, 3).map((checkin) => {
+                        const moodInfo = MOOD_LIST.find(m => m.type === checkin.mood);
+                        const timeStr = checkin.time.substring(0, 5); // HH:MM
+                        
+                        return (
+                          <motion.div
+                            key={checkin.id}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center gap-3 p-2 rounded-xl bg-black/[0.02] hover:bg-black/[0.04] transition-colors"
+                          >
+                            <div 
+                              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: `${moodInfo?.color}15` }}
+                            >
+                              <span className="text-xl">{moodInfo?.emoji}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-[#0a0a0a]">{timeStr}</span>
+                                <span className="text-xs text-[#9a9a9a]">•</span>
+                                <span 
+                                  className="text-xs font-medium"
+                                  style={{ color: moodInfo?.color }}
+                                >
+                                  {checkin.score}/10
+                                </span>
+                              </div>
+                              {checkin.note && (
+                                <p className="text-xs text-[#9a9a9a] truncate mt-0.5">
+                                  {checkin.note}
+                                </p>
+                              )}
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+
+                    {todayCheckins.length > 3 && (
+                      <Link 
+                        href="/checkin"
+                        className="block text-center text-xs text-[#0a0a0a]/60 hover:text-[#0a0a0a] pt-2 transition-colors"
+                      >
+                        +{todayCheckins.length - 3} more check-ins
+                      </Link>
+                    )}
+                  </div>
+                ) : todayEntry && todayMood ? (
+                  /* Legacy single entry display */
                   <div className="flex items-center gap-5">
                     <motion.div
                       initial={{ scale: 0 }}
@@ -569,7 +660,6 @@ export default function DashboardPage() {
                         {todayMood.emoji}
                       </motion.span>
                       
-                      {/* Gentle pulse */}
                       <motion.div
                         animate={{ 
                           scale: [1, 1.2, 1],
@@ -597,6 +687,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ) : (
+                  /* Empty state */
                   <div className="flex flex-col items-center py-4">
                     <div className="w-16 h-16 rounded-2xl bg-black/5 border border-black/8 flex items-center justify-center mb-4">
                       <SmilePlus className="w-8 h-8 text-[#555555]" />
